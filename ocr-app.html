@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR Documents — Lector &Ograve;ptic</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-2: #232733;
+    --border: #2e3345;
+    --text: #e4e6f0;
+    --text-dim: #8b90a5;
+    --accent: #6c8aff;
+    --accent-glow: rgba(108, 138, 255, 0.15);
+    --accent-2: #ff7eb3;
+    --success: #4ecdc4;
+    --radius: 12px;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(108,138,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(108,138,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none; z-index: 0;
+  }
+
+  .app {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  header { text-align: center; margin-bottom: 2.5rem; animation: fadeDown 0.6s ease; }
+
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  header .badge {
+    display: inline-block; font-family: var(--mono);
+    font-size: 0.7rem; font-weight: 500;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-glow);
+    border: 1px solid rgba(108,138,255,0.2);
+    padding: 0.35em 1em; border-radius: 50px; margin-bottom: 1rem;
+  }
+
+  header h1 {
+    font-size: 2.2rem; font-weight: 700; letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--text), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+
+  header p { color: var(--text-dim); margin-top: 0.5rem; font-size: 0.95rem; }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;
+    margin-bottom: 1.5rem; animation: fadeDown 0.6s ease 0.1s both;
+  }
+
+  .control-group { display: flex; flex-direction: column; gap: 0.35rem; }
+
+  .control-group > label {
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim);
+  }
+
+  .lang-checks, .opt-checks { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .lang-check, .opt-check { position: relative; }
+  .lang-check input, .opt-check input { display: none; }
+
+  .lang-check span, .opt-check span {
+    display: inline-flex; align-items: center; gap: 0.4em;
+    font-size: 0.82rem; font-weight: 500; padding: 0.55em 1em;
+    border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--text-dim);
+    cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+
+  .lang-check span::before, .opt-check span::before {
+    content: ''; width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid var(--border); transition: all 0.2s;
+  }
+
+  .lang-check input:checked + span, .opt-check input:checked + span {
+    border-color: var(--accent); color: var(--text); background: var(--accent-glow);
+  }
+
+  .lang-check input:checked + span::before, .opt-check input:checked + span::before {
+    background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px var(--accent);
+  }
+
+  .lang-check span:hover, .opt-check span:hover { border-color: var(--accent); }
+
+  select {
+    font-family: var(--sans); font-size: 0.85rem; font-weight: 500;
+    padding: 0.55em 2em 0.55em 0.9em; border-radius: 8px;
+    border: 1.5px solid var(--border); background: var(--surface); color: var(--text);
+    cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b90a5'%3E%3Cpath d='M6 8.5L1 3.5h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.7em center;
+    transition: border-color 0.2s;
+  }
+
+  select:hover, select:focus { border-color: var(--accent); outline: none; }
+
+  /* Dropzone */
+  .dropzone {
+    position: relative; border: 2px dashed var(--border); border-radius: var(--radius);
+    background: var(--surface); padding: 3rem 2rem; text-align: center;
+    cursor: pointer; transition: all 0.3s; animation: fadeDown 0.6s ease 0.2s both;
+  }
+
+  .dropzone:hover, .dropzone.drag-over { border-color: var(--accent); background: var(--accent-glow); }
+  .dropzone.drag-over { transform: scale(1.01); }
+
+  .dropzone-icon {
+    width: 56px; height: 56px; margin: 0 auto 1rem; border-radius: 14px;
+    background: linear-gradient(135deg, var(--accent-glow), rgba(255,126,179,0.1));
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .dropzone-icon svg { width: 26px; height: 26px; stroke: var(--accent); }
+  .dropzone h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .dropzone p { color: var(--text-dim); font-size: 0.85rem; }
+  .dropzone input { display: none; }
+
+  /* File info */
+  .file-info {
+    display: none; align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 1rem;
+  }
+  .file-info.visible { display: flex; }
+  .file-info .fi-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(255,126,179,0.15), rgba(108,138,255,0.15));
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .file-info .fi-icon svg { width: 20px; height: 20px; stroke: var(--accent-2); }
+  .file-info .fi-details { flex: 1; min-width: 0; }
+  .file-info .fi-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-info .fi-meta { font-size: 0.78rem; color: var(--text-dim); }
+  .file-info .fi-remove {
+    background: none; border: none; cursor: pointer; color: var(--text-dim);
+    padding: 0.4rem; border-radius: 6px; transition: all 0.2s;
+  }
+  .file-info .fi-remove:hover { color: var(--accent-2); background: rgba(255,126,179,0.1); }
+
+  /* Buttons */
+  .actions { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+    padding: 0.75em 1.8em; border-radius: 10px; border: none;
+    background: var(--accent); color: #fff; cursor: pointer;
+    transition: all 0.25s; box-shadow: 0 4px 20px rgba(108,138,255,0.3);
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(108,138,255,0.4); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+    padding: 0.75em 1.8em; border-radius: 10px;
+    border: 1.5px solid var(--border); background: var(--surface);
+    color: var(--text); cursor: pointer; transition: all 0.25s;
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--accent); }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Progress */
+  .progress-area { display: none; margin-bottom: 1.5rem; }
+  .progress-area.visible { display: block; }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+  .progress-label { font-size: 0.82rem; font-weight: 500; color: var(--text-dim); }
+  .progress-pct { font-family: var(--mono); font-size: 0.78rem; color: var(--accent); }
+  .progress-bar { width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+  .progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 3px; transition: width 0.3s ease;
+  }
+  .progress-pages { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); margin-top: 0.4rem; }
+
+  /* Output */
+  .output-area { display: none; }
+  .output-area.visible { display: block; }
+  .output-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; }
+  .output-header h2 { font-size: 1.1rem; font-weight: 600; }
+  .output-actions { display: flex; gap: 0.5rem; }
+  .btn-icon {
+    display: inline-flex; align-items: center; gap: 0.4em;
+    font-family: var(--sans); font-size: 0.78rem; font-weight: 600;
+    padding: 0.5em 1em; border-radius: 8px;
+    border: 1.5px solid var(--border); background: var(--surface);
+    color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  }
+  .btn-icon:hover { border-color: var(--accent); color: var(--text); }
+  .output-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .page-tab-bar {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: thin;
+  }
+  .page-tab {
+    font-family: var(--mono); font-size: 0.75rem; font-weight: 500;
+    padding: 0.7em 1.2em; border: none; background: none;
+    color: var(--text-dim); cursor: pointer; white-space: nowrap;
+    border-bottom: 2px solid transparent; transition: all 0.2s;
+  }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-glow); }
+
+  .page-content {
+    padding: 1.25rem; max-height: 520px; overflow-y: auto;
+    font-size: 0.88rem; line-height: 1.7; white-space: pre-wrap;
+    word-break: break-word; font-family: var(--sans);
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+
+  .stats-bar {
+    display: flex; gap: 1.5rem; padding: 0.8rem 1.25rem;
+    border-top: 1px solid var(--border); background: var(--surface-2); flex-wrap: wrap;
+  }
+  .stat { font-size: 0.72rem; color: var(--text-dim); }
+  .stat strong { font-family: var(--mono); color: var(--text); margin-right: 0.3em; }
+  .stat .method-text { color: var(--success); }
+  .stat .method-ocr { color: var(--accent-2); }
+
+  /* Loading */
+  .loading-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(15,17,23,0.92); backdrop-filter: blur(6px);
+    flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem;
+  }
+  .loading-overlay.visible { display: flex; }
+  .loading-spinner {
+    width: 48px; height: 48px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay p { font-size: 0.9rem; color: var(--text-dim); text-align: center; padding: 0 1rem; }
+
+  .error-banner {
+    display: none; padding: 1rem 1.25rem;
+    background: rgba(255,126,179,0.08); border: 1px solid rgba(255,126,179,0.25);
+    border-radius: var(--radius); margin-bottom: 1rem;
+    font-size: 0.85rem; color: var(--accent-2); white-space: pre-wrap;
+  }
+  .error-banner.visible { display: block; }
+
+  .info-banner {
+    display: none; padding: 0.85rem 1.25rem;
+    background: rgba(78,205,196,0.06); border: 1px solid rgba(78,205,196,0.2);
+    border-radius: var(--radius); margin-bottom: 1rem;
+    font-size: 0.82rem; color: var(--success); line-height: 1.5;
+  }
+  .info-banner.visible { display: block; }
+
+  @media (max-width: 640px) {
+    .app { padding: 1.5rem 1rem 3rem; }
+    header h1 { font-size: 1.6rem; }
+    .controls { flex-direction: column; }
+    .dropzone { padding: 2rem 1.5rem; }
+    .output-header { flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="libLoading">
+  <div class="loading-spinner"></div>
+  <p id="loadingMsg">Carregant llibreries...</p>
+</div>
+
+<div class="app">
+  <header>
+    <div class="badge">Tesseract.js &middot; PDF.js &middot; Optimitzat</div>
+    <h1>Lector &Ograve;ptic de Documents</h1>
+    <p>OCR per a PDF en catal&agrave;, castell&agrave; i angl&egrave;s &mdash; tot al navegador</p>
+  </header>
+
+  <div class="error-banner" id="errorBanner"></div>
+  <div class="info-banner" id="infoBanner"></div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Idiomes OCR</label>
+      <div class="lang-checks">
+        <label class="lang-check"><input type="checkbox" value="cat" checked><span>Catal&agrave;</span></label>
+        <label class="lang-check"><input type="checkbox" value="spa" checked><span>Castell&agrave;</span></label>
+        <label class="lang-check"><input type="checkbox" value="eng" checked><span>Angl&egrave;s</span></label>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Resoluci&oacute;</label>
+      <select id="dpiSelect">
+        <option value="1">R&agrave;pid (100 DPI)</option>
+        <option value="1.5" selected>Normal (150 DPI)</option>
+        <option value="2">Alta (200 DPI)</option>
+        <option value="3">M&agrave;xima (300 DPI)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Workers</label>
+      <select id="workerCount">
+        <option value="1">1 (menys RAM)</option>
+        <option value="2" selected>2 (equilibrat)</option>
+        <option value="4">4 (m&eacute;s r&agrave;pid)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Opcions</label>
+      <div class="opt-checks">
+        <label class="opt-check"><input type="checkbox" id="optFast"><span>Models r&agrave;pids</span></label>
+        <label class="opt-check"><input type="checkbox" id="optGray" checked><span>Escala grisos</span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="dropzone" id="dropzone">
+    <div class="dropzone-icon">
+      <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/>
+        <polyline points="9 15 12 12 15 15"/>
+      </svg>
+    </div>
+    <h3>Arrossega un PDF aqu&iacute;</h3>
+    <p>o fes clic per seleccionar un fitxer</p>
+    <input type="file" id="fileInput" accept=".pdf">
+  </div>
+
+  <div class="file-info" id="fileInfo">
+    <div class="fi-icon">
+      <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+    </div>
+    <div class="fi-details">
+      <div class="fi-name" id="fileName"></div>
+      <div class="fi-meta" id="fileMeta"></div>
+    </div>
+    <button class="fi-remove" id="fileRemove" title="Eliminar">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="startBtn" disabled>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Iniciar OCR
+    </button>
+    <button class="btn-secondary" id="cancelBtn" disabled style="display:none;">Cancel&middot;lar</button>
+  </div>
+
+  <div class="progress-area" id="progressArea">
+    <div class="progress-header">
+      <span class="progress-label" id="progressLabel">Inicialitzant...</span>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-pages" id="progressPages"></div>
+  </div>
+
+  <div class="output-area" id="outputArea">
+    <div class="output-header">
+      <h2>Resultat</h2>
+      <div class="output-actions">
+        <button class="btn-icon" id="copyAllBtn">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copiar tot
+        </button>
+        <button class="btn-icon" id="downloadBtn">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descarregar .txt
+        </button>
+      </div>
+    </div>
+    <div class="output-box">
+      <div class="page-tab-bar" id="pageTabs"></div>
+      <div class="page-content" id="pageContent"></div>
+      <div class="stats-bar" id="statsBar"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function() {
+  const TESS_JS    = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
+  const WORKER_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/worker.min.js';
+  const CORE_DIR   = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0';
+  const LANG_BEST  = 'https://tessdata.projectnaptha.com/4.0.0';
+  const LANG_FAST  = 'https://tessdata.projectnaptha.com/4.0.0_fast';
+  const PDFJS_JS   = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+  const PDFJS_WRKR = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+  const $ = id => document.getElementById(id);
+  const libOverlay = $('libLoading');
+  const loadingMsg = $('loadingMsg');
+  const errorBanner = $('errorBanner');
+  const infoBanner = $('infoBanner');
+
+  function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
+  function showInfo(msg) { infoBanner.textContent = msg; infoBanner.classList.add('visible'); }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      var s = document.createElement('script');
+      s.src = src; s.onload = resolve;
+      s.onerror = () => reject(new Error('No s\'ha pogut carregar: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── Load libs + build patched worker ──
+  let patchedWorkerBlobUrl = null;
+
+  try {
+    libOverlay.classList.add('visible');
+    loadingMsg.textContent = 'Carregant PDF.js...';
+    await loadScript(PDFJS_JS);
+    loadingMsg.textContent = 'Carregant Tesseract.js...';
+    await loadScript(TESS_JS);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WRKR;
+
+    loadingMsg.textContent = 'Preparant motor OCR...';
+    var wr = await fetch(WORKER_URL);
+    if (!wr.ok) throw new Error('HTTP ' + wr.status);
+    var wt = await wr.text();
+
+    var patch = `(function(){
+var _o=self.importScripts;
+self.importScripts=function(){
+for(var i=0;i<arguments.length;i++){
+try{_o.call(self,arguments[i])}catch(e){
+var x=new XMLHttpRequest();
+x.open('GET',arguments[i],false);x.send();
+if(x.status>=200&&x.status<300){(0,eval)(x.responseText)}
+else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
+}}};})();\n`;
+
+    var blob = new Blob([patch + wt], { type: 'application/javascript' });
+    patchedWorkerBlobUrl = URL.createObjectURL(blob);
+    libOverlay.classList.remove('visible');
+  } catch(e) {
+    libOverlay.classList.remove('visible');
+    showError('Error carregant: ' + e.message);
+    console.error(e); return;
+  }
+
+  // ── DOM ──
+  const dropzone = $('dropzone'), fileInput = $('fileInput');
+  const fileInfo = $('fileInfo'), fileName = $('fileName'), fileMeta = $('fileMeta');
+  const fileRemove = $('fileRemove');
+  const startBtn = $('startBtn'), cancelBtn = $('cancelBtn');
+  const progressArea = $('progressArea'), progressLabel = $('progressLabel');
+  const progressPct = $('progressPct'), progressFill = $('progressFill');
+  const progressPages = $('progressPages');
+  const outputArea = $('outputArea'), pageTabs = $('pageTabs');
+  const pageContent = $('pageContent'), statsBar = $('statsBar');
+  const copyAllBtn = $('copyAllBtn'), downloadBtn = $('downloadBtn');
+  const dpiSelect = $('dpiSelect'), workerCountSel = $('workerCount');
+  const optFast = $('optFast'), optGray = $('optGray');
+
+  let pdfFile = null, pageResults = [], cancelled = false, workers = [];
+  let timeStart = 0;
+
+  // ── Drag/drop ──
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f && f.type === 'application/pdf') loadFile(f);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+  function loadFile(f) {
+    pdfFile = f;
+    fileName.textContent = f.name;
+    fileMeta.textContent = formatSize(f.size) + ' \u00b7 PDF';
+    fileInfo.classList.add('visible');
+    dropzone.style.display = 'none';
+    startBtn.disabled = false;
+    outputArea.classList.remove('visible');
+    errorBanner.classList.remove('visible');
+    infoBanner.classList.remove('visible');
+    pageResults = [];
+  }
+
+  fileRemove.addEventListener('click', () => {
+    pdfFile = null; fileInfo.classList.remove('visible');
+    dropzone.style.display = ''; startBtn.disabled = true;
+    fileInput.value = ''; outputArea.classList.remove('visible');
+  });
+
+  function formatSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+
+  function getLanguages() {
+    var checks = document.querySelectorAll('.lang-check input:checked');
+    return Array.from(checks).map(c => c.value).join('+') || 'eng';
+  }
+
+  // ═══════════════════════════════════════════════
+  // OPTIMIZATION 1: Extract embedded text from PDF
+  // If the page has text content, skip OCR entirely
+  // ═══════════════════════════════════════════════
+  async function extractTextFromPage(page) {
+    try {
+      var tc = await page.getTextContent();
+      var text = tc.items.map(i => {
+        if (i.hasEOL) return (i.str || '') + '\n';
+        return i.str || '';
+      }).join('');
+      // Clean up: collapse excessive whitespace but keep newlines
+      text = text.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      return text;
+    } catch(e) { return ''; }
+  }
+
+  // Heuristic: has enough real text? (not just whitespace/symbols)
+  function hasRealText(text) {
+    if (!text || text.length < 20) return false;
+    // Count actual word characters (letters in any script)
+    var letters = (text.match(/\p{L}/gu) || []).length;
+    return letters > 15;
+  }
+
+  // ═══════════════════════════════════════════════
+  // OPTIMIZATION 2: Grayscale preprocessing
+  // Reduces pixel data by ~66% before sending to OCR
+  // ═══════════════════════════════════════════════
+  function toGrayscale(canvas) {
+    var ctx = canvas.getContext('2d');
+    var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var d = imgData.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var gray = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) | 0;
+      d[i] = d[i+1] = d[i+2] = gray;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+
+  // ═══════════════════════════════════════════════
+  // OPTIMIZATION 3: Parallel workers (worker pool)
+  // ═══════════════════════════════════════════════
+  async function createWorkerPool(count, langs) {
+    var langPath = optFast.checked ? LANG_FAST : LANG_BEST;
+    var pool = [];
+    var promises = [];
+    for (var i = 0; i < count; i++) {
+      promises.push(
+        Tesseract.createWorker(langs, 1, {
+          workerPath: patchedWorkerBlobUrl,
+          workerBlobURL: false,
+          corePath: CORE_DIR,
+          langPath: langPath,
+        })
+      );
+    }
+    pool = await Promise.all(promises);
+    return pool;
+  }
+
+  async function terminatePool(pool) {
+    for (var w of pool) {
+      try { await w.terminate(); } catch(_) {}
+    }
+  }
+
+  // ── Main OCR ──
+  startBtn.addEventListener('click', startOCR);
+
+  async function startOCR() {
+    if (!pdfFile) return;
+    cancelled = false;
+    pageResults = [];
+    workers = [];
+    startBtn.disabled = true;
+    cancelBtn.disabled = false;
+    cancelBtn.style.display = '';
+    progressArea.classList.add('visible');
+    outputArea.classList.remove('visible');
+    errorBanner.classList.remove('visible');
+    infoBanner.classList.remove('visible');
+    setProgress(0, 'Carregant PDF...');
+    timeStart = performance.now();
+
+    var scale = parseFloat(dpiSelect.value);
+    var langs = getLanguages();
+    var numWorkers = parseInt(workerCountSel.value);
+    var useGray = optGray.checked;
+
+    var textExtracted = 0, ocrProcessed = 0;
+
+    try {
+      var arrayBuffer = await pdfFile.arrayBuffer();
+      var pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      var numPages = pdf.numPages;
+
+      // Initialize results array
+      for (var i = 0; i < numPages; i++) {
+        pageResults.push({ page: i + 1, text: '', confidence: 0, words: 0, method: '' });
+      }
+
+      // ── Phase 1: Try text extraction on all pages ──
+      setProgress(3, 'Analitzant estructura del PDF...');
+      progressPages.textContent = numPages + ' p\u00e0gines detectades';
+
+      var ocrNeeded = []; // page indices that need OCR
+
+      for (var i = 0; i < numPages; i++) {
+        if (cancelled) break;
+        var page = await pdf.getPage(i + 1);
+        var text = await extractTextFromPage(page);
+
+        if (hasRealText(text)) {
+          pageResults[i].text = text;
+          pageResults[i].confidence = 100;
+          pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
+          pageResults[i].method = 'text';
+          textExtracted++;
+        } else {
+          ocrNeeded.push(i);
+        }
+      }
+
+      setProgress(8, textExtracted + ' p\u00e0gines amb text digital, ' + ocrNeeded.length + ' necessiten OCR...');
+
+      // ── Phase 2: OCR only pages that need it ──
+      if (ocrNeeded.length > 0 && !cancelled) {
+        // Cap workers to pages that need OCR
+        var actualWorkers = Math.min(numWorkers, ocrNeeded.length);
+        setProgress(10, 'Creant ' + actualWorkers + ' worker' + (actualWorkers > 1 ? 's' : '') + ' OCR...');
+
+        workers = await createWorkerPool(actualWorkers, langs);
+
+        // Process pages in parallel batches
+        var completed = 0;
+        var queue = [...ocrNeeded];
+
+        async function processNext(worker) {
+          while (queue.length > 0 && !cancelled) {
+            var pageIdx = queue.shift();
+            var pageNum = pageIdx + 1;
+
+            var page = await pdf.getPage(pageNum);
+            var viewport = page.getViewport({ scale });
+            var canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            var ctx = canvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            // Grayscale optimization
+            if (useGray) toGrayscale(canvas);
+
+            var { data } = await worker.recognize(canvas);
+
+            pageResults[pageIdx].text = data.text;
+            pageResults[pageIdx].confidence = data.confidence;
+            pageResults[pageIdx].words = data.words ? data.words.length : 0;
+            pageResults[pageIdx].method = 'ocr';
+            ocrProcessed++;
+            completed++;
+
+            var pct = 10 + (completed / ocrNeeded.length) * 88;
+            setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
+            progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
+
+            // Free memory
+            canvas.width = 0; canvas.height = 0;
+          }
+        }
+
+        // Launch parallel processing
+        await Promise.all(workers.map(w => processNext(w)));
+        await terminatePool(workers);
+        workers = [];
+      }
+
+      if (!cancelled) {
+        var elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);
+        setProgress(100, 'Completat en ' + elapsed + 's!');
+
+        var infoMsg = '';
+        if (textExtracted > 0 && ocrNeeded.length > 0) {
+          infoMsg = textExtracted + ' p\u00e0gines extretes directament (instant), ' + ocrProcessed + ' processades amb OCR. Temps: ' + elapsed + 's';
+        } else if (textExtracted > 0 && ocrNeeded.length === 0) {
+          infoMsg = 'Totes les ' + textExtracted + ' p\u00e0gines tenien text digital integrat. Extracci\u00f3 instant\u00e0nia sense OCR! (' + elapsed + 's)';
+        } else {
+          infoMsg = ocrProcessed + ' p\u00e0gines processades amb OCR en ' + elapsed + 's';
+        }
+
+        setTimeout(() => {
+          progressArea.classList.remove('visible');
+          showInfo(infoMsg);
+          showResults();
+        }, 400);
+      }
+    } catch (err) {
+      console.error(err);
+      showError('Error: ' + (err.message || err));
+      progressArea.classList.remove('visible');
+      if (workers.length) { await terminatePool(workers); workers = []; }
+    } finally {
+      startBtn.disabled = false;
+      cancelBtn.disabled = true;
+      cancelBtn.style.display = 'none';
+    }
+  }
+
+  cancelBtn.addEventListener('click', async () => {
+    cancelled = true;
+    if (workers.length) { await terminatePool(workers); workers = []; }
+    progressArea.classList.remove('visible');
+    startBtn.disabled = false;
+    cancelBtn.style.display = 'none';
+  });
+
+  function setProgress(pct, label) {
+    progressFill.style.width = pct + '%';
+    progressPct.textContent = Math.round(pct) + '%';
+    if (label) progressLabel.textContent = label;
+  }
+
+  function showResults() {
+    outputArea.classList.add('visible');
+    pageTabs.innerHTML = '';
+
+    var allTab = document.createElement('button');
+    allTab.className = 'page-tab active';
+    allTab.textContent = 'Tot';
+    allTab.addEventListener('click', () => selectTab(allTab, -1));
+    pageTabs.appendChild(allTab);
+
+    pageResults.forEach((r, idx) => {
+      var tab = document.createElement('button');
+      tab.className = 'page-tab';
+      var icon = r.method === 'text' ? '\u26a1' : '\U0001f50d';
+      tab.textContent = (r.method === 'text' ? '\u26a1 ' : '') + 'P\u00e0g. ' + r.page;
+      tab.addEventListener('click', () => selectTab(tab, idx));
+      pageTabs.appendChild(tab);
+    });
+
+    selectTab(allTab, -1);
+  }
+
+  function selectTab(tabEl, idx) {
+    document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+
+    if (idx === -1) {
+      pageContent.textContent = pageResults.map(r =>
+        '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : 'OCR') + '] \u2500\u2500\n\n' + r.text
+      ).join('\n\n');
+      var tw = pageResults.reduce((s, r) => s + r.words, 0);
+      var ac = pageResults.length ? pageResults.reduce((s, r) => s + r.confidence, 0) / pageResults.length : 0;
+      var tc = pageResults.reduce((s, r) => s + r.text.length, 0);
+      var textPages = pageResults.filter(r => r.method === 'text').length;
+      var ocrPages = pageResults.filter(r => r.method === 'ocr').length;
+      statsBar.innerHTML =
+        '<span class="stat"><strong>' + pageResults.length + '</strong>p\u00e0gines</span>' +
+        '<span class="stat"><strong>' + tw.toLocaleString() + '</strong>paraules</span>' +
+        '<span class="stat"><strong>' + tc.toLocaleString() + '</strong>car\u00e0cters</span>' +
+        '<span class="stat"><strong>' + ac.toFixed(1) + '%</strong>confian\u00e7a</span>' +
+        (textPages > 0 ? '<span class="stat"><strong class="method-text">\u26a1 ' + textPages + '</strong>directe</span>' : '') +
+        (ocrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + ocrPages + '</strong>OCR</span>' : '');
+    } else {
+      var r = pageResults[idx];
+      pageContent.textContent = r.text;
+      var methodLabel = r.method === 'text'
+        ? '<span class="method-text">\u26a1 text directe</span>'
+        : '<span class="method-ocr">OCR</span>';
+      statsBar.innerHTML =
+        '<span class="stat"><strong>' + r.page + '</strong>p\u00e0gina</span>' +
+        '<span class="stat">' + methodLabel + '</span>' +
+        '<span class="stat"><strong>' + r.words.toLocaleString() + '</strong>paraules</span>' +
+        '<span class="stat"><strong>' + r.text.length.toLocaleString() + '</strong>car\u00e0cters</span>' +
+        '<span class="stat"><strong>' + r.confidence.toFixed(1) + '%</strong>confian\u00e7a</span>';
+    }
+  }
+
+  copyAllBtn.addEventListener('click', () => {
+    var allText = pageResults.map(r => r.text).join('\n\n');
+    navigator.clipboard.writeText(allText).then(() => {
+      var orig = copyAllBtn.innerHTML;
+      copyAllBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Copiat!';
+      setTimeout(() => copyAllBtn.innerHTML = orig, 1500);
+    });
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    var allText = pageResults.map(r =>
+      '\u2500\u2500 P\u00e0gina ' + r.page + ' \u2500\u2500\n\n' + r.text
+    ).join('\n\n');
+    var blob = new Blob([allText], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+})();
+</script>
+
+</body>
+</html>
