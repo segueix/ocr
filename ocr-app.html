@@ -695,16 +695,21 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
       for (var i = 0; i < numPages; i++) {
         if (cancelled) break;
-        var page = await pdf.getPage(i + 1);
-        var text = await extractTextFromPage(page);
+        try {
+          var page = await pdf.getPage(i + 1);
+          var text = await extractTextFromPage(page);
 
-        if (hasRealText(text)) {
-          var wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-          setPageResult(i, text, 100, wordCount, 'text');
+          if (hasRealText(text)) {
+            var wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+            setPageResult(i, text, 100, wordCount, 'text');
+            updateLivePage(i);
+            textExtracted++;
+          } else {
+            ocrNeeded.push(i);
+          }
+        } catch (pageErr) {
+          setPageResult(i, '[Error a la pàgina ' + (i + 1) + ': ' + (pageErr.message || pageErr) + ']', 0, 0, 'error');
           updateLivePage(i);
-          textExtracted++;
-        } else {
-          ocrNeeded.push(i);
         }
       }
 
@@ -726,6 +731,14 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var renderingDone = false;
         var maxBuffered = Math.max(2, actualWorkers * 2);
 
+        function markOcrProgress(pageNum, ok) {
+          if (ok) ocrProcessed++;
+          completed++;
+          var pct = 10 + (completed / ocrNeeded.length) * 88;
+          setProgress(pct, 'OCR pàgina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
+          progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' pàgines OCR completades';
+        }
+
         async function producer() {
           try {
             while (nextToRender < ocrNeeded.length && !cancelled) {
@@ -735,16 +748,22 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
               }
               var pageIdx = ocrNeeded[nextToRender++];
               var pageNum = pageIdx + 1;
-              var page = await pdf.getPage(pageNum);
-              var adaptiveScale = getAdaptiveScale(page, scale);
-              var viewport = page.getViewport({ scale: adaptiveScale });
-              var canvas = document.createElement('canvas');
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              var ctx = canvas.getContext('2d');
-              await page.render({ canvasContext: ctx, viewport }).promise;
-              if (useGray) toGrayscale(canvas);
-              renderQueue.push({ pageIdx, pageNum, canvas });
+              try {
+                var page = await pdf.getPage(pageNum);
+                var adaptiveScale = getAdaptiveScale(page, scale);
+                var viewport = page.getViewport({ scale: adaptiveScale });
+                var canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                var ctx = canvas.getContext('2d');
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                if (useGray) toGrayscale(canvas);
+                renderQueue.push({ pageIdx, pageNum, canvas });
+              } catch (renderErr) {
+                setPageResult(pageIdx, '[Error render pàgina ' + pageNum + ': ' + (renderErr.message || renderErr) + ']', 0, 0, 'error');
+                updateLivePage(pageIdx);
+                markOcrProgress(pageNum, false);
+              }
             }
           } finally {
             renderingDone = true;
@@ -768,12 +787,11 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
               setPageResult(pageIdx, data.text, data.confidence, data.words ? data.words.length : 0, 'ocr');
               updateLivePage(pageIdx);
-              ocrProcessed++;
-              completed++;
-
-              var pct = 10 + (completed / ocrNeeded.length) * 88;
-              setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
-              progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
+              markOcrProgress(pageNum, true);
+            } catch (ocrErr) {
+              setPageResult(pageIdx, '[Error OCR pàgina ' + pageNum + ': ' + (ocrErr.message || ocrErr) + ']', 0, 0, 'error');
+              updateLivePage(pageIdx);
+              markOcrProgress(pageNum, false);
             } finally {
               canvas.width = 0;
               canvas.height = 0;
@@ -860,8 +878,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     pageResults.forEach((r, idx) => {
       var tab = document.createElement('button');
       tab.className = 'page-tab';
-      var icon = r.method === 'text' ? '\u26a1' : '\U0001f50d';
-      tab.textContent = (r.method === 'text' ? '\u26a1 ' : '') + 'P\u00e0g. ' + r.page;
+      tab.textContent = getTabLabel(r);
       tab.addEventListener('click', () => selectTab(tab, idx));
       pageTabs.appendChild(tab);
     });
@@ -883,7 +900,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
           'Pots obrir qualsevol pestanya de pàgina per veure text en viu.';
       } else {
         pageContent.textContent = pageResults.map(r =>
-          '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : 'OCR') + '] \u2500\u2500\n\n' + r.text
+          '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : (r.method === 'error' ? 'error' : 'OCR')) + '] \u2500\u2500\n\n' + r.text
         ).join('\n\n');
       }
       renderStatsAll();
@@ -892,7 +909,9 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       pageContent.textContent = r.text;
       var methodLabel = r.method === 'text'
         ? '<span class="method-text">\u26a1 text directe</span>'
-        : '<span class="method-ocr">OCR</span>';
+        : (r.method === 'error'
+          ? '<span class="method-ocr">error</span>'
+          : '<span class="method-ocr">OCR</span>');
       statsBar.innerHTML =
         '<span class="stat"><strong>' + r.page + '</strong>p\u00e0gina</span>' +
         '<span class="stat">' + methodLabel + '</span>' +
@@ -913,25 +932,33 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     allTab.addEventListener('click', () => selectTab(allTab, -1));
     pageTabs.appendChild(allTab);
 
-    pageResults.forEach((r, idx) => {
-      var tab = document.createElement('button');
-      tab.className = 'page-tab';
-      tab.dataset.idx = String(idx);
-      tab.textContent = 'Pàg. ' + r.page + ' …';
-      tab.addEventListener('click', () => selectTab(tab, idx));
-      pageTabs.appendChild(tab);
-    });
-
     selectTab(allTab, -1);
   }
 
   function updateLivePage(idx) {
-    var tab = pageTabs.querySelector('[data-idx="' + idx + '"]');
-    if (tab) {
-      var r = pageResults[idx];
-      tab.textContent = (r.method === 'text' ? '⚡ ' : '') + 'Pàg. ' + r.page;
-    }
+    var tab = ensureLiveTab(idx);
+    var r = pageResults[idx];
+    tab.textContent = getTabLabel(r);
     scheduleLiveRefresh();
+  }
+
+  function getTabLabel(result) {
+    if (result.method === 'text') return '⚡ Pàg. ' + result.page;
+    if (result.method === 'error') return '⚠ Pàg. ' + result.page;
+    return 'Pàg. ' + result.page;
+  }
+
+  function ensureLiveTab(idx) {
+    var existing = pageTabs.querySelector('[data-idx="' + idx + '"]');
+    if (existing) return existing;
+    var r = pageResults[idx];
+    var tab = document.createElement('button');
+    tab.className = 'page-tab';
+    tab.dataset.idx = String(idx);
+    tab.textContent = 'Pàg. ' + r.page;
+    tab.addEventListener('click', () => selectTab(tab, idx));
+    pageTabs.appendChild(tab);
+    return tab;
   }
 
   function setPageResult(idx, text, confidence, words, method) {
