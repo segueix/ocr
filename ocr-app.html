@@ -490,6 +490,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   let pdfFile = null, pageResults = [], cancelled = false, workers = [];
   let activeTabIdx = -1;
+  let liveRefreshTimer = null;
   const workerPoolState = { key: '', pool: [] };
   let timeStart = 0;
 
@@ -615,6 +616,18 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     return Math.max(1, Math.min(6, cores - 1));
   }
 
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function getAdaptiveScale(page, baseScale) {
+    var vp = page.getViewport({ scale: baseScale });
+    var pixels = vp.width * vp.height;
+    if (pixels > 5000000) return Math.max(1, baseScale * 0.7); // very large pages
+    if (pixels > 3200000) return Math.max(1, baseScale * 0.8); // large pages
+    return baseScale;
+  }
+
   function resolveWorkerCount(ocrPages) {
     var selected = workerCountSel.value;
     var requested = selected === 'auto'
@@ -639,6 +652,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   async function startOCR() {
     if (!pdfFile) return;
+    if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
     cancelled = false;
     pageResults = [];
     workers = [];
@@ -702,47 +716,78 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
         workers = await getReusableWorkerPool(actualWorkers, langs);
 
-        // Process pages in parallel batches
+        // Pipeline: producer renders pages ahead, workers consume OCR queue
         var completed = 0;
-        var queue = [...ocrNeeded];
+        var nextToRender = 0;
+        var renderQueue = [];
+        var renderingDone = false;
+        var maxBuffered = Math.max(2, actualWorkers * 2);
 
-        async function processNext(worker) {
-          while (queue.length > 0 && !cancelled) {
-            var pageIdx = queue.shift();
-            var pageNum = pageIdx + 1;
-
-            var page = await pdf.getPage(pageNum);
-            var viewport = page.getViewport({ scale });
-            var canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            var ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport }).promise;
-
-            // Grayscale optimization
-            if (useGray) toGrayscale(canvas);
-
-            var { data } = await worker.recognize(canvas);
-
-            pageResults[pageIdx].text = data.text;
-            pageResults[pageIdx].confidence = data.confidence;
-            pageResults[pageIdx].words = data.words ? data.words.length : 0;
-            pageResults[pageIdx].method = 'ocr';
-            updateLivePage(pageIdx);
-            ocrProcessed++;
-            completed++;
-
-            var pct = 10 + (completed / ocrNeeded.length) * 88;
-            setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
-            progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
-
-            // Free memory
-            canvas.width = 0; canvas.height = 0;
+        async function producer() {
+          try {
+            while (nextToRender < ocrNeeded.length && !cancelled) {
+              if (renderQueue.length >= maxBuffered) {
+                await sleep(15);
+                continue;
+              }
+              var pageIdx = ocrNeeded[nextToRender++];
+              var pageNum = pageIdx + 1;
+              var page = await pdf.getPage(pageNum);
+              var adaptiveScale = getAdaptiveScale(page, scale);
+              var viewport = page.getViewport({ scale: adaptiveScale });
+              var canvas = document.createElement('canvas');
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              var ctx = canvas.getContext('2d');
+              await page.render({ canvasContext: ctx, viewport }).promise;
+              if (useGray) toGrayscale(canvas);
+              renderQueue.push({ pageIdx, pageNum, canvas });
+            }
+          } finally {
+            renderingDone = true;
           }
         }
 
-        // Launch parallel processing
-        await Promise.all(workers.map(w => processNext(w)));
+        async function processNext(worker) {
+          while (!cancelled) {
+            if (!renderQueue.length) {
+              if (renderingDone) break;
+              await sleep(15);
+              continue;
+            }
+            var task = renderQueue.shift();
+            if (!task) continue;
+            var pageIdx = task.pageIdx;
+            var pageNum = task.pageNum;
+            var canvas = task.canvas;
+            try {
+              var { data } = await worker.recognize(canvas);
+
+              pageResults[pageIdx].text = data.text;
+              pageResults[pageIdx].confidence = data.confidence;
+              pageResults[pageIdx].words = data.words ? data.words.length : 0;
+              pageResults[pageIdx].method = 'ocr';
+              updateLivePage(pageIdx);
+              ocrProcessed++;
+              completed++;
+
+              var pct = 10 + (completed / ocrNeeded.length) * 88;
+              setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
+              progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
+            } finally {
+              canvas.width = 0;
+              canvas.height = 0;
+            }
+          }
+        }
+
+        // Launch producer + consumers
+        await Promise.all([producer(), ...workers.map(w => processNext(w))]);
+        for (var task of renderQueue) {
+          task.canvas.width = 0;
+          task.canvas.height = 0;
+        }
+        renderQueue = [];
         workers = [];
       }
 
@@ -780,6 +825,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   cancelBtn.addEventListener('click', async () => {
     cancelled = true;
+    if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
     await invalidateWorkerPool();
     workers = [];
     progressArea.classList.remove('visible');
@@ -880,12 +926,21 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       var r = pageResults[idx];
       tab.textContent = (r.method === 'text' ? '⚡ ' : '') + 'Pàg. ' + r.page;
     }
-    if (activeTabIdx === -1) {
-      var allTab = pageTabs.querySelector('[data-all="1"]');
-      if (allTab) selectTab(allTab, -1);
-    } else if (activeTabIdx === idx && tab) {
-      selectTab(tab, idx);
-    }
+    scheduleLiveRefresh();
+  }
+
+  function scheduleLiveRefresh() {
+    if (liveRefreshTimer) return;
+    liveRefreshTimer = setTimeout(() => {
+      liveRefreshTimer = null;
+      if (activeTabIdx === -1) {
+        var allTab = pageTabs.querySelector('[data-all="1"]');
+        if (allTab) selectTab(allTab, -1);
+      } else {
+        var activeTab = pageTabs.querySelector('[data-idx="' + activeTabIdx + '"]');
+        if (activeTab) selectTab(activeTab, activeTabIdx);
+      }
+    }, 120);
   }
 
   copyAllBtn.addEventListener('click', () => {
