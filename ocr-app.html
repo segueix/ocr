@@ -324,8 +324,9 @@
     <div class="control-group">
       <label>Workers</label>
       <select id="workerCount">
+        <option value="auto" selected>Auto (recomanat)</option>
         <option value="1">1 (menys RAM)</option>
-        <option value="2" selected>2 (equilibrat)</option>
+        <option value="2">2 (equilibrat)</option>
         <option value="4">4 (m&eacute;s r&agrave;pid)</option>
       </select>
     </div>
@@ -488,6 +489,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   const optFast = $('optFast'), optGray = $('optGray');
 
   let pdfFile = null, pageResults = [], cancelled = false, workers = [];
+  let activeTabIdx = -1;
+  const workerPoolState = { key: '', pool: [] };
   let timeStart = 0;
 
   // ── Drag/drop ──
@@ -599,6 +602,38 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     }
   }
 
+  async function invalidateWorkerPool() {
+    if (workerPoolState.pool.length) {
+      await terminatePool(workerPoolState.pool);
+      workerPoolState.pool = [];
+      workerPoolState.key = '';
+    }
+  }
+
+  function getAutoWorkers() {
+    var cores = navigator.hardwareConcurrency || 4;
+    return Math.max(1, Math.min(6, cores - 1));
+  }
+
+  function resolveWorkerCount(ocrPages) {
+    var selected = workerCountSel.value;
+    var requested = selected === 'auto'
+      ? getAutoWorkers()
+      : (parseInt(selected, 10) || 2);
+    return Math.max(1, Math.min(requested, ocrPages));
+  }
+
+  async function getReusableWorkerPool(count, langs) {
+    var key = langs + '|' + (optFast.checked ? 'fast' : 'best') + '|' + count;
+    if (workerPoolState.key === key && workerPoolState.pool.length === count) {
+      return workerPoolState.pool;
+    }
+    await invalidateWorkerPool();
+    workerPoolState.pool = await createWorkerPool(count, langs);
+    workerPoolState.key = key;
+    return workerPoolState.pool;
+  }
+
   // ── Main OCR ──
   startBtn.addEventListener('click', startOCR);
 
@@ -619,7 +654,6 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
     var scale = parseFloat(dpiSelect.value);
     var langs = getLanguages();
-    var numWorkers = parseInt(workerCountSel.value);
     var useGray = optGray.checked;
 
     var textExtracted = 0, ocrProcessed = 0;
@@ -633,6 +667,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       for (var i = 0; i < numPages; i++) {
         pageResults.push({ page: i + 1, text: '', confidence: 0, words: 0, method: '' });
       }
+      initLiveResults();
 
       // ── Phase 1: Try text extraction on all pages ──
       setProgress(3, 'Analitzant estructura del PDF...');
@@ -650,6 +685,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
           pageResults[i].confidence = 100;
           pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
           pageResults[i].method = 'text';
+          updateLivePage(i);
           textExtracted++;
         } else {
           ocrNeeded.push(i);
@@ -661,10 +697,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       // ── Phase 2: OCR only pages that need it ──
       if (ocrNeeded.length > 0 && !cancelled) {
         // Cap workers to pages that need OCR
-        var actualWorkers = Math.min(numWorkers, ocrNeeded.length);
+        var actualWorkers = resolveWorkerCount(ocrNeeded.length);
         setProgress(10, 'Creant ' + actualWorkers + ' worker' + (actualWorkers > 1 ? 's' : '') + ' OCR...');
 
-        workers = await createWorkerPool(actualWorkers, langs);
+        workers = await getReusableWorkerPool(actualWorkers, langs);
 
         // Process pages in parallel batches
         var completed = 0;
@@ -692,6 +728,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             pageResults[pageIdx].confidence = data.confidence;
             pageResults[pageIdx].words = data.words ? data.words.length : 0;
             pageResults[pageIdx].method = 'ocr';
+            updateLivePage(pageIdx);
             ocrProcessed++;
             completed++;
 
@@ -706,7 +743,6 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
         // Launch parallel processing
         await Promise.all(workers.map(w => processNext(w)));
-        await terminatePool(workers);
         workers = [];
       }
 
@@ -733,7 +769,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       console.error(err);
       showError('Error: ' + (err.message || err));
       progressArea.classList.remove('visible');
-      if (workers.length) { await terminatePool(workers); workers = []; }
+      await invalidateWorkerPool();
+      workers = [];
     } finally {
       startBtn.disabled = false;
       cancelBtn.disabled = true;
@@ -743,7 +780,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   cancelBtn.addEventListener('click', async () => {
     cancelled = true;
-    if (workers.length) { await terminatePool(workers); workers = []; }
+    await invalidateWorkerPool();
+    workers = [];
     progressArea.classList.remove('visible');
     startBtn.disabled = false;
     cancelBtn.style.display = 'none';
@@ -778,6 +816,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   }
 
   function selectTab(tabEl, idx) {
+    activeTabIdx = idx;
     document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
     tabEl.classList.add('active');
 
@@ -809,6 +848,43 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         '<span class="stat"><strong>' + r.words.toLocaleString() + '</strong>paraules</span>' +
         '<span class="stat"><strong>' + r.text.length.toLocaleString() + '</strong>car\u00e0cters</span>' +
         '<span class="stat"><strong>' + r.confidence.toFixed(1) + '%</strong>confian\u00e7a</span>';
+    }
+  }
+
+  function initLiveResults() {
+    outputArea.classList.add('visible');
+    pageTabs.innerHTML = '';
+
+    var allTab = document.createElement('button');
+    allTab.className = 'page-tab active';
+    allTab.textContent = 'Tot';
+    allTab.dataset.all = '1';
+    allTab.addEventListener('click', () => selectTab(allTab, -1));
+    pageTabs.appendChild(allTab);
+
+    pageResults.forEach((r, idx) => {
+      var tab = document.createElement('button');
+      tab.className = 'page-tab';
+      tab.dataset.idx = String(idx);
+      tab.textContent = 'Pàg. ' + r.page + ' …';
+      tab.addEventListener('click', () => selectTab(tab, idx));
+      pageTabs.appendChild(tab);
+    });
+
+    selectTab(allTab, -1);
+  }
+
+  function updateLivePage(idx) {
+    var tab = pageTabs.querySelector('[data-idx="' + idx + '"]');
+    if (tab) {
+      var r = pageResults[idx];
+      tab.textContent = (r.method === 'text' ? '⚡ ' : '') + 'Pàg. ' + r.page;
+    }
+    if (activeTabIdx === -1) {
+      var allTab = pageTabs.querySelector('[data-all="1"]');
+      if (allTab) selectTab(allTab, -1);
+    } else if (activeTabIdx === idx && tab) {
+      selectTab(tab, idx);
     }
   }
 
