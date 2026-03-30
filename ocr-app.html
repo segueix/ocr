@@ -491,6 +491,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   let pdfFile = null, pageResults = [], cancelled = false, workers = [];
   let activeTabIdx = -1;
   let liveRefreshTimer = null;
+  let isProcessing = false;
+  let donePages = 0, doneWords = 0, doneChars = 0, doneConfidence = 0, doneTextPages = 0, doneOcrPages = 0;
   const workerPoolState = { key: '', pool: [] };
   let timeStart = 0;
 
@@ -654,7 +656,9 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     if (!pdfFile) return;
     if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
     cancelled = false;
+    isProcessing = true;
     pageResults = [];
+    donePages = 0; doneWords = 0; doneChars = 0; doneConfidence = 0; doneTextPages = 0; doneOcrPages = 0;
     workers = [];
     startBtn.disabled = true;
     cancelBtn.disabled = false;
@@ -695,10 +699,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var text = await extractTextFromPage(page);
 
         if (hasRealText(text)) {
-          pageResults[i].text = text;
-          pageResults[i].confidence = 100;
-          pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
-          pageResults[i].method = 'text';
+          var wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+          setPageResult(i, text, 100, wordCount, 'text');
           updateLivePage(i);
           textExtracted++;
         } else {
@@ -720,13 +722,14 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var completed = 0;
         var nextToRender = 0;
         var renderQueue = [];
+        var renderRead = 0;
         var renderingDone = false;
         var maxBuffered = Math.max(2, actualWorkers * 2);
 
         async function producer() {
           try {
             while (nextToRender < ocrNeeded.length && !cancelled) {
-              if (renderQueue.length >= maxBuffered) {
+              if ((renderQueue.length - renderRead) >= maxBuffered) {
                 await sleep(15);
                 continue;
               }
@@ -750,12 +753,12 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
         async function processNext(worker) {
           while (!cancelled) {
-            if (!renderQueue.length) {
+            if (renderRead >= renderQueue.length) {
               if (renderingDone) break;
               await sleep(15);
               continue;
             }
-            var task = renderQueue.shift();
+            var task = renderQueue[renderRead++];
             if (!task) continue;
             var pageIdx = task.pageIdx;
             var pageNum = task.pageNum;
@@ -763,10 +766,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             try {
               var { data } = await worker.recognize(canvas);
 
-              pageResults[pageIdx].text = data.text;
-              pageResults[pageIdx].confidence = data.confidence;
-              pageResults[pageIdx].words = data.words ? data.words.length : 0;
-              pageResults[pageIdx].method = 'ocr';
+              setPageResult(pageIdx, data.text, data.confidence, data.words ? data.words.length : 0, 'ocr');
               updateLivePage(pageIdx);
               ocrProcessed++;
               completed++;
@@ -777,13 +777,18 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             } finally {
               canvas.width = 0;
               canvas.height = 0;
+              if (renderRead > 64 && renderRead * 2 > renderQueue.length) {
+                renderQueue = renderQueue.slice(renderRead);
+                renderRead = 0;
+              }
             }
           }
         }
 
         // Launch producer + consumers
         await Promise.all([producer(), ...workers.map(w => processNext(w))]);
-        for (var task of renderQueue) {
+        for (var i = renderRead; i < renderQueue.length; i++) {
+          var task = renderQueue[i];
           task.canvas.width = 0;
           task.canvas.height = 0;
         }
@@ -794,6 +799,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       if (!cancelled) {
         var elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);
         setProgress(100, 'Completat en ' + elapsed + 's!');
+        isProcessing = false;
 
         var infoMsg = '';
         if (textExtracted > 0 && ocrNeeded.length > 0) {
@@ -816,6 +822,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       progressArea.classList.remove('visible');
       await invalidateWorkerPool();
       workers = [];
+      isProcessing = false;
     } finally {
       startBtn.disabled = false;
       cancelBtn.disabled = true;
@@ -828,6 +835,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     if (liveRefreshTimer) { clearTimeout(liveRefreshTimer); liveRefreshTimer = null; }
     await invalidateWorkerPool();
     workers = [];
+    isProcessing = false;
     progressArea.classList.remove('visible');
     startBtn.disabled = false;
     cancelBtn.style.display = 'none';
@@ -867,21 +875,18 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     tabEl.classList.add('active');
 
     if (idx === -1) {
-      pageContent.textContent = pageResults.map(r =>
-        '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : 'OCR') + '] \u2500\u2500\n\n' + r.text
-      ).join('\n\n');
-      var tw = pageResults.reduce((s, r) => s + r.words, 0);
-      var ac = pageResults.length ? pageResults.reduce((s, r) => s + r.confidence, 0) / pageResults.length : 0;
-      var tc = pageResults.reduce((s, r) => s + r.text.length, 0);
-      var textPages = pageResults.filter(r => r.method === 'text').length;
-      var ocrPages = pageResults.filter(r => r.method === 'ocr').length;
-      statsBar.innerHTML =
-        '<span class="stat"><strong>' + pageResults.length + '</strong>p\u00e0gines</span>' +
-        '<span class="stat"><strong>' + tw.toLocaleString() + '</strong>paraules</span>' +
-        '<span class="stat"><strong>' + tc.toLocaleString() + '</strong>car\u00e0cters</span>' +
-        '<span class="stat"><strong>' + ac.toFixed(1) + '%</strong>confian\u00e7a</span>' +
-        (textPages > 0 ? '<span class="stat"><strong class="method-text">\u26a1 ' + textPages + '</strong>directe</span>' : '') +
-        (ocrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + ocrPages + '</strong>OCR</span>' : '');
+      if (isProcessing && pageResults.length > 150) {
+        pageContent.textContent =
+          'Processant document gran (' + pageResults.length + ' pàgines)...\n' +
+          donePages + ' pàgines completades fins ara.\n\n' +
+          'Per rendiment, la vista "Tot" completa es generarà en acabar.\n' +
+          'Pots obrir qualsevol pestanya de pàgina per veure text en viu.';
+      } else {
+        pageContent.textContent = pageResults.map(r =>
+          '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : 'OCR') + '] \u2500\u2500\n\n' + r.text
+        ).join('\n\n');
+      }
+      renderStatsAll();
     } else {
       var r = pageResults[idx];
       pageContent.textContent = r.text;
@@ -927,6 +932,49 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       tab.textContent = (r.method === 'text' ? '⚡ ' : '') + 'Pàg. ' + r.page;
     }
     scheduleLiveRefresh();
+  }
+
+  function setPageResult(idx, text, confidence, words, method) {
+    var prevMethod = pageResults[idx].method;
+    pageResults[idx].text = text;
+    pageResults[idx].confidence = confidence;
+    pageResults[idx].words = words;
+    pageResults[idx].method = method;
+    if (!prevMethod && method) {
+      donePages++;
+      doneWords += words;
+      doneChars += text.length;
+      doneConfidence += confidence;
+      if (method === 'text') doneTextPages++;
+      if (method === 'ocr') doneOcrPages++;
+    }
+  }
+
+  function renderStatsAll() {
+    if (isProcessing) {
+      var avgConf = donePages ? (doneConfidence / donePages) : 0;
+      statsBar.innerHTML =
+        '<span class="stat"><strong>' + pageResults.length + '</strong>pàgines</span>' +
+        '<span class="stat"><strong>' + doneWords.toLocaleString() + '</strong>paraules</span>' +
+        '<span class="stat"><strong>' + doneChars.toLocaleString() + '</strong>caràcters</span>' +
+        '<span class="stat"><strong>' + avgConf.toFixed(1) + '%</strong>confiança</span>' +
+        '<span class="stat"><strong>' + donePages + '/' + pageResults.length + '</strong>completades</span>' +
+        (doneTextPages > 0 ? '<span class="stat"><strong class="method-text">⚡ ' + doneTextPages + '</strong>directe</span>' : '') +
+        (doneOcrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + doneOcrPages + '</strong>OCR</span>' : '');
+      return;
+    }
+    var tw = pageResults.reduce((s, r) => s + r.words, 0);
+    var ac = pageResults.length ? pageResults.reduce((s, r) => s + r.confidence, 0) / pageResults.length : 0;
+    var tc = pageResults.reduce((s, r) => s + r.text.length, 0);
+    var textPages = pageResults.filter(r => r.method === 'text').length;
+    var ocrPages = pageResults.filter(r => r.method === 'ocr').length;
+    statsBar.innerHTML =
+      '<span class="stat"><strong>' + pageResults.length + '</strong>pàgines</span>' +
+      '<span class="stat"><strong>' + tw.toLocaleString() + '</strong>paraules</span>' +
+      '<span class="stat"><strong>' + tc.toLocaleString() + '</strong>caràcters</span>' +
+      '<span class="stat"><strong>' + ac.toFixed(1) + '%</strong>confiança</span>' +
+      (textPages > 0 ? '<span class="stat"><strong class="method-text">⚡ ' + textPages + '</strong>directe</span>' : '') +
+      (ocrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + ocrPages + '</strong>OCR</span>' : '');
   }
 
   function scheduleLiveRefresh() {
