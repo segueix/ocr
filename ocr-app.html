@@ -439,7 +439,7 @@
   function showInfo(msg) { infoBanner.textContent = msg; infoBanner.classList.add('visible'); }
 
   if (location.protocol === 'file:') {
-    showError('Aquest fitxer s\'està executant com a file:// i el navegador bloqueja parts de l\'OCR. Obre\'l amb un servidor local (http://localhost) per evitar errors de seguretat.');
+    showInfo('Executant en mode file://. Si algun navegador bloqueja workers/frames, llavors obre l\'app via servidor local (http://localhost).');
   }
 
   function loadScript(src) {
@@ -755,10 +755,6 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   async function startOCR() {
     if (!pdfFile) return;
-    if (location.protocol === 'file:') {
-      showError('No es pot executar l\'OCR de manera fiable des de file:// (ChromeOS el tracta com a origen únic i bloqueja workers/frames). Inicia un servidor local i obre http://localhost:8000/ocr-app.html.');
-      return;
-    }
     cancelled = false;
     pageResults = [];
     pageStream.innerHTML = '';
