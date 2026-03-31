@@ -438,6 +438,10 @@
   function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
   function showInfo(msg) { infoBanner.textContent = msg; infoBanner.classList.add('visible'); }
 
+  if (location.protocol === 'file:') {
+    showError('Aquest fitxer s\'està executant com a file:// i el navegador bloqueja parts de l\'OCR. Obre\'l amb un servidor local (http://localhost) per evitar errors de seguretat.');
+  }
+
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       var s = document.createElement('script');
@@ -506,14 +510,22 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-  dropzone.addEventListener('drop', e => {
+  dropzone.addEventListener('drop', async e => {
     e.preventDefault(); dropzone.classList.remove('drag-over');
     var f = e.dataTransfer.files[0];
-    if (f && f.type === 'application/pdf') loadFile(f);
+    if (f) await loadFile(f);
   });
-  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+  fileInput.addEventListener('change', async () => { if (fileInput.files[0]) await loadFile(fileInput.files[0]); });
 
-  function loadFile(f) {
+  async function loadFile(f) {
+    var sig = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+    var header = String.fromCharCode.apply(null, sig);
+    if (header !== '%PDF-') {
+      pdfFile = null;
+      startBtn.disabled = true;
+      showError('El fitxer seleccionat no sembla un PDF vàlid. Tria un PDF real abans d\'iniciar l\'OCR.');
+      return;
+    }
     pdfFile = f;
     fileName.textContent = f.name;
     fileMeta.textContent = formatSize(f.size) + ' \u00b7 PDF';
@@ -839,7 +851,14 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       }
     } catch (err) {
       console.error(err);
-      showError('Error: ' + (err.message || err));
+      var msg = err && err.message ? err.message : String(err);
+      if (msg.includes('Invalid number')) {
+        showError('El PDF sembla corrupte o no és compatible (error de parseig intern). Prova de reexportar-lo com a PDF estàndard i torna-ho a provar.');
+      } else if (msg.includes('UnknownErrorException') && location.protocol === 'file:') {
+        showError('Error de seguretat del navegador en mode file://. Executa l\'app des d\'un servidor local (per exemple: python3 -m http.server).');
+      } else {
+        showError('Error: ' + msg);
+      }
       progressArea.classList.remove('visible');
       if (workers.length) { await terminatePool(workers); workers = []; }
     } finally {
