@@ -439,7 +439,7 @@
   function showInfo(msg) { infoBanner.textContent = msg; infoBanner.classList.add('visible'); }
 
   if (location.protocol === 'file:') {
-    showInfo('Executant en mode file://. Si algun navegador bloqueja workers/frames, llavors obre l\'app via servidor local (http://localhost).');
+    showError('Aquest fitxer s\'està executant com a file:// i el navegador bloqueja parts de l\'OCR. Obre\'l amb un servidor local (http://localhost) per evitar errors de seguretat.');
   }
 
   function loadScript(src) {
@@ -582,51 +582,6 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     // Count actual word characters (letters in any script)
     var letters = (text.match(/\p{L}/gu) || []).length;
     return letters > 15;
-  }
-
-  // ═══════════════════════════════════════════════
-  // OPTIMIZATION 1b: Post-process OCR/text output
-  // - joins split lines
-  // - preserves paragraph breaks
-  // - fixes hyphenated line wraps
-  // ═══════════════════════════════════════════════
-  function normalizeOutputText(raw) {
-    if (!raw) return '';
-    var text = raw.replace(/\r\n?/g, '\n');
-    text = text.replace(/[ \t]+\n/g, '\n');
-    text = text.replace(/(\p{L})-\n(\p{L})/gu, '$1$2');
-
-    var inLines = text.split('\n');
-    var out = [];
-    var buffer = '';
-
-    function flushBuffer() {
-      if (buffer.trim().length > 0) out.push(buffer.trim());
-      buffer = '';
-    }
-
-    for (var i = 0; i < inLines.length; i++) {
-      var line = inLines[i].trim();
-      var next = i + 1 < inLines.length ? inLines[i + 1].trim() : '';
-
-      if (!line) {
-        flushBuffer();
-        if (!out.length || out[out.length - 1] !== '') out.push('');
-        continue;
-      }
-
-      if (!buffer) buffer = line;
-      else buffer += ' ' + line;
-
-      var endSentence = /[.!?:;)\]]$/.test(line);
-      var nextStartsMarker = /^(?:[-•*]|\d+[.)]|CAP[IÍ]TOL|CHAPTER)\b/i.test(next);
-      var nextStartsUpper = /^[A-ZÀ-Ú]/.test(next);
-
-      if (endSentence || !next || nextStartsMarker || nextStartsUpper) flushBuffer();
-    }
-
-    flushBuffer();
-    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   // ═══════════════════════════════════════════════
@@ -805,9 +760,9 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var text = await extractTextFromPage(page);
 
         if (hasRealText(text)) {
-          pageResults[i].text = normalizeOutputText(text);
+          pageResults[i].text = text;
           pageResults[i].confidence = 100;
-          pageResults[i].words = pageResults[i].text.split(/\s+/).filter(w => w.length > 0).length;
+          pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
           pageResults[i].method = 'text';
           pageResults[i].done = true;
           persistPageState();
@@ -850,7 +805,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
             var { data } = await worker.recognize(canvas);
 
-            pageResults[pageIdx].text = normalizeOutputText(data.text);
+            pageResults[pageIdx].text = data.text;
             pageResults[pageIdx].confidence = data.confidence;
             pageResults[pageIdx].words = data.words ? data.words.length : 0;
             pageResults[pageIdx].method = 'ocr';
@@ -897,10 +852,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     } catch (err) {
       console.error(err);
       var msg = err && err.message ? err.message : String(err);
-      if (location.protocol === 'file:' || msg.includes('Unsafe attempt to load URL file://') || msg.includes('UnknownErrorException')) {
-        showError('Error de seguretat del navegador en mode file://. Executa l\'app des d\'un servidor local (per exemple: python3 -m http.server).');
-      } else if (msg.includes('Invalid number')) {
+      if (msg.includes('Invalid number')) {
         showError('El PDF sembla corrupte o no és compatible (error de parseig intern). Prova de reexportar-lo com a PDF estàndard i torna-ho a provar.');
+      } else if (msg.includes('UnknownErrorException') && location.protocol === 'file:') {
+        showError('Error de seguretat del navegador en mode file://. Executa l\'app des d\'un servidor local (per exemple: python3 -m http.server).');
       } else {
         showError('Error: ' + msg);
       }
