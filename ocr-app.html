@@ -111,6 +111,9 @@
   }
 
   .lang-check span:hover, .opt-check span:hover { border-color: var(--accent); }
+  .lang-hint {
+    max-width: 280px; font-size: 0.74rem; color: var(--text-dim); line-height: 1.45;
+  }
 
   select {
     font-family: var(--sans); font-size: 0.85rem; font-weight: 500;
@@ -216,25 +219,23 @@
     color: var(--text-dim); cursor: pointer; transition: all 0.2s;
   }
   .btn-icon:hover { border-color: var(--accent); color: var(--text); }
+  .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
   .output-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .page-tab-bar {
-    display: flex; gap: 0; border-bottom: 1px solid var(--border);
-    overflow-x: auto; scrollbar-width: thin;
-  }
-  .page-tab {
-    font-family: var(--mono); font-size: 0.75rem; font-weight: 500;
-    padding: 0.7em 1.2em; border: none; background: none;
-    color: var(--text-dim); cursor: pointer; white-space: nowrap;
-    border-bottom: 2px solid transparent; transition: all 0.2s;
-  }
-  .page-tab:hover { color: var(--text); }
-  .page-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-glow); }
-
-  .page-content {
-    padding: 1.25rem; max-height: 520px; overflow-y: auto;
-    font-size: 0.88rem; line-height: 1.7; white-space: pre-wrap;
-    word-break: break-word; font-family: var(--sans);
+  .page-stream {
+    max-height: 560px; overflow-y: auto; padding: 0.9rem;
     scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .page-entry {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+    padding: 0.95rem 1rem; margin-bottom: 0.8rem;
+  }
+  .page-entry:last-child { margin-bottom: 0; }
+  .page-entry h3 {
+    font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem;
+    color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .page-entry p {
+    font-size: 0.88rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
   }
 
   .stats-bar {
@@ -305,12 +306,14 @@
 
   <div class="controls">
     <div class="control-group">
-      <label>Idiomes OCR</label>
+      <label>Llengua del document (OCR)</label>
       <div class="lang-checks">
-        <label class="lang-check"><input type="checkbox" value="cat" checked><span>Catal&agrave;</span></label>
-        <label class="lang-check"><input type="checkbox" value="spa" checked><span>Castell&agrave;</span></label>
-        <label class="lang-check"><input type="checkbox" value="eng" checked><span>Angl&egrave;s</span></label>
+        <label class="lang-check"><input type="radio" name="ocrLang" value="cat" checked><span>Catal&agrave; (r&agrave;pid)</span></label>
+        <label class="lang-check"><input type="radio" name="ocrLang" value="spa"><span>Castell&agrave;</span></label>
+        <label class="lang-check"><input type="radio" name="ocrLang" value="eng"><span>Angl&egrave;s</span></label>
+        <label class="lang-check"><input type="radio" name="ocrLang" value="cat+spa+eng"><span>Multillengua</span></label>
       </div>
+      <p class="lang-hint">Triar una sola llengua redueix RAM i accelera l'OCR. Fes servir multillengua nom&eacute;s si cal.</p>
     </div>
     <div class="control-group">
       <label>Resoluci&oacute;</label>
@@ -322,11 +325,13 @@
       </select>
     </div>
     <div class="control-group">
-      <label>Workers</label>
+      <label>OCR en paral&middot;lel (8 GB RAM)</label>
       <select id="workerCount">
         <option value="1">1 (menys RAM)</option>
         <option value="2" selected>2 (equilibrat)</option>
-        <option value="4">4 (m&eacute;s r&agrave;pid)</option>
+        <option value="3">3 (estable)</option>
+        <option value="4">4 (recomanat)</option>
+        <option value="5">5 (agressiu)</option>
       </select>
     </div>
     <div class="control-group">
@@ -391,19 +396,24 @@
     <div class="output-header">
       <h2>Resultat</h2>
       <div class="output-actions">
+        <button class="btn-icon" id="mergeBtn" disabled>
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6"/><path d="M16 6l5 6-5 6"/><path d="M13 4l-2 16"/></svg>
+          Merge
+        </button>
         <button class="btn-icon" id="copyAllBtn">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Copiar tot
         </button>
-        <button class="btn-icon" id="downloadBtn">
+        <button class="btn-icon" id="downloadTxtBtn">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Descarregar .txt
         </button>
+        <button class="btn-icon" id="downloadDocxBtn" disabled>Descarregar .docx</button>
+        <button class="btn-icon" id="downloadPdfBtn" disabled>Descarregar .pdf</button>
       </div>
     </div>
     <div class="output-box">
-      <div class="page-tab-bar" id="pageTabs"></div>
-      <div class="page-content" id="pageContent"></div>
+      <div class="page-stream" id="pageStream"></div>
       <div class="stats-bar" id="statsBar"></div>
     </div>
   </div>
@@ -427,6 +437,10 @@
 
   function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
   function showInfo(msg) { infoBanner.textContent = msg; infoBanner.classList.add('visible'); }
+
+  if (location.protocol === 'file:') {
+    showError('Aquest fitxer s\'està executant com a file:// i el navegador bloqueja parts de l\'OCR. Obre\'l amb un servidor local (http://localhost) per evitar errors de seguretat.');
+  }
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -481,27 +495,37 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   const progressArea = $('progressArea'), progressLabel = $('progressLabel');
   const progressPct = $('progressPct'), progressFill = $('progressFill');
   const progressPages = $('progressPages');
-  const outputArea = $('outputArea'), pageTabs = $('pageTabs');
-  const pageContent = $('pageContent'), statsBar = $('statsBar');
-  const copyAllBtn = $('copyAllBtn'), downloadBtn = $('downloadBtn');
+  const outputArea = $('outputArea'), pageStream = $('pageStream');
+  const statsBar = $('statsBar');
+  const mergeBtn = $('mergeBtn'), copyAllBtn = $('copyAllBtn');
+  const downloadTxtBtn = $('downloadTxtBtn'), downloadDocxBtn = $('downloadDocxBtn'), downloadPdfBtn = $('downloadPdfBtn');
   const dpiSelect = $('dpiSelect'), workerCountSel = $('workerCount');
   const optFast = $('optFast'), optGray = $('optGray');
 
   let pdfFile = null, pageResults = [], cancelled = false, workers = [];
-  let timeStart = 0;
+  let timeStart = 0, highestRenderedPage = 0, mergedTextCache = '';
+  const STORAGE_KEY = 'ocr-app-pages-v1';
 
   // ── Drag/drop ──
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-  dropzone.addEventListener('drop', e => {
+  dropzone.addEventListener('drop', async e => {
     e.preventDefault(); dropzone.classList.remove('drag-over');
     var f = e.dataTransfer.files[0];
-    if (f && f.type === 'application/pdf') loadFile(f);
+    if (f) await loadFile(f);
   });
-  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+  fileInput.addEventListener('change', async () => { if (fileInput.files[0]) await loadFile(fileInput.files[0]); });
 
-  function loadFile(f) {
+  async function loadFile(f) {
+    var sig = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+    var header = String.fromCharCode.apply(null, sig);
+    if (header !== '%PDF-') {
+      pdfFile = null;
+      startBtn.disabled = true;
+      showError('El fitxer seleccionat no sembla un PDF vàlid. Tria un PDF real abans d\'iniciar l\'OCR.');
+      return;
+    }
     pdfFile = f;
     fileName.textContent = f.name;
     fileMeta.textContent = formatSize(f.size) + ' \u00b7 PDF';
@@ -512,12 +536,16 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     errorBanner.classList.remove('visible');
     infoBanner.classList.remove('visible');
     pageResults = [];
+    mergedTextCache = '';
+    highestRenderedPage = 0;
+    resetOutput();
   }
 
   fileRemove.addEventListener('click', () => {
     pdfFile = null; fileInfo.classList.remove('visible');
     dropzone.style.display = ''; startBtn.disabled = true;
-    fileInput.value = ''; outputArea.classList.remove('visible');
+    fileInput.value = '';
+    resetOutput();
   });
 
   function formatSize(b) {
@@ -527,8 +555,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   }
 
   function getLanguages() {
-    var checks = document.querySelectorAll('.lang-check input:checked');
-    return Array.from(checks).map(c => c.value).join('+') || 'eng';
+    var selected = document.querySelector('.lang-check input:checked');
+    return selected ? selected.value : 'eng';
   }
 
   // ═══════════════════════════════════════════════
@@ -599,6 +627,84 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     }
   }
 
+  async function ensureExportLibs() {
+    if (!window.jspdf) await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js');
+    if (!window.docx) await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.iife.min.js');
+  }
+
+  function getStorageMeta() {
+    return {
+      name: pdfFile ? pdfFile.name : '',
+      updatedAt: new Date().toISOString(),
+      pages: pageResults
+    };
+  }
+
+  function persistPageState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(getStorageMeta()));
+    } catch (_) {}
+  }
+
+  function appendScannedPagesInOrder() {
+    for (var i = highestRenderedPage; i < pageResults.length; i++) {
+      var row = pageResults[i];
+      if (!row || !row.done) break;
+      var card = document.createElement('article');
+      card.className = 'page-entry';
+      card.innerHTML = '<h3>Pàgina ' + row.page + ' [' + (row.method === 'text' ? 'text directe' : 'OCR') + ']</h3><p></p>';
+      card.querySelector('p').textContent = row.text || '(Sense text detectat)';
+      pageStream.appendChild(card);
+      highestRenderedPage++;
+    }
+    refreshStats();
+    updateMergeState();
+  }
+
+  function refreshStats() {
+    var completedPages = pageResults.filter(r => r && r.done).length;
+    var tw = pageResults.reduce((s, r) => s + (r.words || 0), 0);
+    var ac = completedPages ? pageResults.reduce((s, r) => s + (r.confidence || 0), 0) / completedPages : 0;
+    var tc = pageResults.reduce((s, r) => s + ((r.text || '').length), 0);
+    var textPages = pageResults.filter(r => r.method === 'text').length;
+    var ocrPages = pageResults.filter(r => r.method === 'ocr').length;
+    statsBar.innerHTML =
+      '<span class="stat"><strong>' + completedPages + '/' + pageResults.length + '</strong>pàgines</span>' +
+      '<span class="stat"><strong>' + tw.toLocaleString() + '</strong>paraules</span>' +
+      '<span class="stat"><strong>' + tc.toLocaleString() + '</strong>caràcters</span>' +
+      '<span class="stat"><strong>' + ac.toFixed(1) + '%</strong>confiança</span>' +
+      (textPages > 0 ? '<span class="stat"><strong class="method-text">⚡ ' + textPages + '</strong>directe</span>' : '') +
+      (ocrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + ocrPages + '</strong>OCR</span>' : '');
+  }
+
+  function getMergedText() {
+    return pageResults
+      .filter(r => r && r.done)
+      .map(r => '── Pàgina ' + r.page + ' ──\n\n' + (r.text || ''))
+      .join('\n\n');
+  }
+
+  function updateMergeState() {
+    var donePages = pageResults.filter(r => r && r.done).length;
+    var canMerge = donePages > 0;
+    mergeBtn.disabled = !canMerge;
+    downloadDocxBtn.disabled = !mergedTextCache;
+    downloadPdfBtn.disabled = !mergedTextCache;
+  }
+
+  function resetOutput() {
+    pageResults = [];
+    pageStream.innerHTML = '';
+    statsBar.innerHTML = '';
+    outputArea.classList.remove('visible');
+    highestRenderedPage = 0;
+    mergedTextCache = '';
+    mergeBtn.disabled = true;
+    downloadDocxBtn.disabled = true;
+    downloadPdfBtn.disabled = true;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  }
+
   // ── Main OCR ──
   startBtn.addEventListener('click', startOCR);
 
@@ -606,6 +712,12 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     if (!pdfFile) return;
     cancelled = false;
     pageResults = [];
+    pageStream.innerHTML = '';
+    highestRenderedPage = 0;
+    mergedTextCache = '';
+    mergeBtn.disabled = true;
+    downloadDocxBtn.disabled = true;
+    downloadPdfBtn.disabled = true;
     workers = [];
     startBtn.disabled = true;
     cancelBtn.disabled = false;
@@ -631,8 +743,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
       // Initialize results array
       for (var i = 0; i < numPages; i++) {
-        pageResults.push({ page: i + 1, text: '', confidence: 0, words: 0, method: '' });
+        pageResults.push({ page: i + 1, text: '', confidence: 0, words: 0, method: '', done: false });
       }
+      outputArea.classList.add('visible');
+      refreshStats();
 
       // ── Phase 1: Try text extraction on all pages ──
       setProgress(3, 'Analitzant estructura del PDF...');
@@ -650,6 +764,9 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
           pageResults[i].confidence = 100;
           pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
           pageResults[i].method = 'text';
+          pageResults[i].done = true;
+          persistPageState();
+          appendScannedPagesInOrder();
           textExtracted++;
         } else {
           ocrNeeded.push(i);
@@ -692,6 +809,9 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             pageResults[pageIdx].confidence = data.confidence;
             pageResults[pageIdx].words = data.words ? data.words.length : 0;
             pageResults[pageIdx].method = 'ocr';
+            pageResults[pageIdx].done = true;
+            persistPageState();
+            appendScannedPagesInOrder();
             ocrProcessed++;
             completed++;
 
@@ -726,12 +846,19 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         setTimeout(() => {
           progressArea.classList.remove('visible');
           showInfo(infoMsg);
-          showResults();
+          appendScannedPagesInOrder();
         }, 400);
       }
     } catch (err) {
       console.error(err);
-      showError('Error: ' + (err.message || err));
+      var msg = err && err.message ? err.message : String(err);
+      if (msg.includes('Invalid number')) {
+        showError('El PDF sembla corrupte o no és compatible (error de parseig intern). Prova de reexportar-lo com a PDF estàndard i torna-ho a provar.');
+      } else if (msg.includes('UnknownErrorException') && location.protocol === 'file:') {
+        showError('Error de seguretat del navegador en mode file://. Executa l\'app des d\'un servidor local (per exemple: python3 -m http.server).');
+      } else {
+        showError('Error: ' + msg);
+      }
       progressArea.classList.remove('visible');
       if (workers.length) { await terminatePool(workers); workers = []; }
     } finally {
@@ -755,65 +882,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     if (label) progressLabel.textContent = label;
   }
 
-  function showResults() {
-    outputArea.classList.add('visible');
-    pageTabs.innerHTML = '';
-
-    var allTab = document.createElement('button');
-    allTab.className = 'page-tab active';
-    allTab.textContent = 'Tot';
-    allTab.addEventListener('click', () => selectTab(allTab, -1));
-    pageTabs.appendChild(allTab);
-
-    pageResults.forEach((r, idx) => {
-      var tab = document.createElement('button');
-      tab.className = 'page-tab';
-      var icon = r.method === 'text' ? '\u26a1' : '\U0001f50d';
-      tab.textContent = (r.method === 'text' ? '\u26a1 ' : '') + 'P\u00e0g. ' + r.page;
-      tab.addEventListener('click', () => selectTab(tab, idx));
-      pageTabs.appendChild(tab);
-    });
-
-    selectTab(allTab, -1);
-  }
-
-  function selectTab(tabEl, idx) {
-    document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
-    tabEl.classList.add('active');
-
-    if (idx === -1) {
-      pageContent.textContent = pageResults.map(r =>
-        '\u2500\u2500 P\u00e0gina ' + r.page + ' [' + (r.method === 'text' ? 'text directe' : 'OCR') + '] \u2500\u2500\n\n' + r.text
-      ).join('\n\n');
-      var tw = pageResults.reduce((s, r) => s + r.words, 0);
-      var ac = pageResults.length ? pageResults.reduce((s, r) => s + r.confidence, 0) / pageResults.length : 0;
-      var tc = pageResults.reduce((s, r) => s + r.text.length, 0);
-      var textPages = pageResults.filter(r => r.method === 'text').length;
-      var ocrPages = pageResults.filter(r => r.method === 'ocr').length;
-      statsBar.innerHTML =
-        '<span class="stat"><strong>' + pageResults.length + '</strong>p\u00e0gines</span>' +
-        '<span class="stat"><strong>' + tw.toLocaleString() + '</strong>paraules</span>' +
-        '<span class="stat"><strong>' + tc.toLocaleString() + '</strong>car\u00e0cters</span>' +
-        '<span class="stat"><strong>' + ac.toFixed(1) + '%</strong>confian\u00e7a</span>' +
-        (textPages > 0 ? '<span class="stat"><strong class="method-text">\u26a1 ' + textPages + '</strong>directe</span>' : '') +
-        (ocrPages > 0 ? '<span class="stat"><strong class="method-ocr">' + ocrPages + '</strong>OCR</span>' : '');
-    } else {
-      var r = pageResults[idx];
-      pageContent.textContent = r.text;
-      var methodLabel = r.method === 'text'
-        ? '<span class="method-text">\u26a1 text directe</span>'
-        : '<span class="method-ocr">OCR</span>';
-      statsBar.innerHTML =
-        '<span class="stat"><strong>' + r.page + '</strong>p\u00e0gina</span>' +
-        '<span class="stat">' + methodLabel + '</span>' +
-        '<span class="stat"><strong>' + r.words.toLocaleString() + '</strong>paraules</span>' +
-        '<span class="stat"><strong>' + r.text.length.toLocaleString() + '</strong>car\u00e0cters</span>' +
-        '<span class="stat"><strong>' + r.confidence.toFixed(1) + '%</strong>confian\u00e7a</span>';
-    }
-  }
-
   copyAllBtn.addEventListener('click', () => {
-    var allText = pageResults.map(r => r.text).join('\n\n');
+    var allText = getMergedText();
     navigator.clipboard.writeText(allText).then(() => {
       var orig = copyAllBtn.innerHTML;
       copyAllBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Copiat!';
@@ -821,10 +891,14 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     });
   });
 
-  downloadBtn.addEventListener('click', () => {
-    var allText = pageResults.map(r =>
-      '\u2500\u2500 P\u00e0gina ' + r.page + ' \u2500\u2500\n\n' + r.text
-    ).join('\n\n');
+  mergeBtn.addEventListener('click', () => {
+    mergedTextCache = getMergedText();
+    updateMergeState();
+    showInfo('Merge completat. Ja pots descarregar TXT, DOCX o PDF.');
+  });
+
+  downloadTxtBtn.addEventListener('click', () => {
+    var allText = mergedTextCache || getMergedText();
     var blob = new Blob([allText], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -832,6 +906,37 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.txt';
     a.click();
     URL.revokeObjectURL(url);
+  });
+
+  downloadDocxBtn.addEventListener('click', async () => {
+    if (!mergedTextCache) return;
+    await ensureExportLibs();
+    var doc = new docx.Document({
+      sections: [{ children: mergedTextCache.split('\n').map(line => new docx.Paragraph({ text: line })) }]
+    });
+    var blob = await docx.Packer.toBlob(doc);
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.docx';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  downloadPdfBtn.addEventListener('click', async () => {
+    if (!mergedTextCache) return;
+    await ensureExportLibs();
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+    var margin = 40;
+    var lines = pdf.splitTextToSize(mergedTextCache, 515);
+    var y = margin;
+    lines.forEach(line => {
+      if (y > 790) { pdf.addPage(); y = margin; }
+      pdf.text(line, margin, y);
+      y += 14;
+    });
+    pdf.save((pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.pdf');
   });
 
 })();
