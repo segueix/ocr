@@ -710,6 +710,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   async function startOCR() {
     if (!pdfFile) return;
+    if (location.protocol === 'file:') {
+      showError('No es pot executar l\'OCR de manera fiable des de file:// (ChromeOS el tracta com a origen únic i bloqueja workers/frames). Inicia un servidor local i obre http://localhost:8000/ocr-app.html.');
+      return;
+    }
     cancelled = false;
     pageResults = [];
     pageStream.innerHTML = '';
@@ -852,10 +856,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     } catch (err) {
       console.error(err);
       var msg = err && err.message ? err.message : String(err);
-      if (msg.includes('Invalid number')) {
-        showError('El PDF sembla corrupte o no és compatible (error de parseig intern). Prova de reexportar-lo com a PDF estàndard i torna-ho a provar.');
-      } else if (msg.includes('UnknownErrorException') && location.protocol === 'file:') {
+      if (location.protocol === 'file:' || msg.includes('Unsafe attempt to load URL file://') || msg.includes('UnknownErrorException')) {
         showError('Error de seguretat del navegador en mode file://. Executa l\'app des d\'un servidor local (per exemple: python3 -m http.server).');
+      } else if (msg.includes('Invalid number')) {
+        showError('El PDF sembla corrupte o no és compatible (error de parseig intern). Prova de reexportar-lo com a PDF estàndard i torna-ho a provar.');
       } else {
         showError('Error: ' + msg);
       }
