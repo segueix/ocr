@@ -809,6 +809,29 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
   }
 
+  // ═══════════════════════════════════════════════
+  // BACKGROUND TAB PROTECTION
+  // Prevent browser from throttling/suspending during OCR
+  // ═══════════════════════════════════════════════
+  var wakeLockAbort = null;
+
+  function acquireWakeLock() {
+    // Method 1: Web Locks API — keeps the tab "active" in the browser's eyes
+    if (navigator.locks) {
+      wakeLockAbort = new AbortController();
+      navigator.locks.request('ocr-processing', { signal: wakeLockAbort.signal }, function() {
+        return new Promise(function() {}); // Hold the lock indefinitely until aborted
+      }).catch(function() {});
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLockAbort) {
+      wakeLockAbort.abort();
+      wakeLockAbort = null;
+    }
+  }
+
   // ── Main OCR ──
   startBtn.addEventListener('click', startOCR);
 
@@ -832,6 +855,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     infoBanner.classList.remove('visible');
     setProgress(0, 'Carregant PDF...');
     timeStart = performance.now();
+    acquireWakeLock();
 
     var scale = parseFloat(dpiSelect.value);
     var langs = getLanguages();
@@ -966,6 +990,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       progressArea.classList.remove('visible');
       if (workers.length) { await terminatePool(workers); workers = []; }
     } finally {
+      releaseWakeLock();
       startBtn.disabled = false;
       cancelBtn.disabled = true;
       cancelBtn.style.display = 'none';
@@ -974,6 +999,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   cancelBtn.addEventListener('click', async () => {
     cancelled = true;
+    releaseWakeLock();
     if (workers.length) { await terminatePool(workers); workers = []; }
     progressArea.classList.remove('visible');
     startBtn.disabled = false;
