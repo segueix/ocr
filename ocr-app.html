@@ -264,6 +264,85 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .loading-overlay p { font-size: 0.9rem; color: var(--text-dim); text-align: center; padding: 0 1rem; }
 
+  /* Page range selector */
+  .page-range {
+    display: none; align-items: center; gap: 0.75rem; padding: 0.9rem 1.25rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 1rem; flex-wrap: wrap;
+  }
+  .page-range.visible { display: flex; }
+  .page-range label {
+    font-size: 0.82rem; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .page-range .range-inputs { display: flex; align-items: center; gap: 0.5rem; }
+  .page-range input[type="number"] {
+    font-family: var(--mono); font-size: 0.88rem; font-weight: 500;
+    width: 5.5em; padding: 0.5em 0.6em; border-radius: 8px;
+    border: 1.5px solid var(--border); background: var(--surface-2); color: var(--text);
+    text-align: center; transition: border-color 0.2s;
+    -moz-appearance: textfield;
+  }
+  .page-range input[type="number"]::-webkit-inner-spin-button,
+  .page-range input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+  .page-range input[type="number"]:hover,
+  .page-range input[type="number"]:focus { border-color: var(--accent); outline: none; }
+  .page-range .range-sep { color: var(--text-dim); font-size: 0.85rem; }
+  .page-range .range-info {
+    font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim);
+    margin-left: auto;
+  }
+
+  /* Fragment library */
+  .fragment-library {
+    display: none; margin-top: 2rem;
+  }
+  .fragment-library.visible { display: block; }
+  .fragment-library h2 {
+    font-size: 1.1rem; font-weight: 600; margin-bottom: 0.8rem;
+  }
+  .fragment-list {
+    display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;
+  }
+  .fragment-item {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; transition: border-color 0.2s;
+  }
+  .fragment-item:hover { border-color: var(--accent); }
+  .fragment-item .frag-icon {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(108,138,255,0.12), rgba(255,126,179,0.12));
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 0.7rem; font-weight: 700; color: var(--accent);
+  }
+  .fragment-item .frag-details { flex: 1; min-width: 0; }
+  .fragment-item .frag-name {
+    font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .fragment-item .frag-meta {
+    font-size: 0.72rem; color: var(--text-dim); font-family: var(--mono);
+  }
+  .fragment-item .frag-actions { display: flex; gap: 0.4rem; }
+  .fragment-item .frag-btn {
+    display: inline-flex; align-items: center; gap: 0.3em;
+    font-family: var(--sans); font-size: 0.72rem; font-weight: 600;
+    padding: 0.4em 0.7em; border-radius: 6px;
+    border: 1.5px solid var(--border); background: var(--surface-2);
+    color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  }
+  .fragment-item .frag-btn:hover { border-color: var(--accent); color: var(--text); }
+  .fragment-item .frag-btn.delete:hover { border-color: var(--accent-2); color: var(--accent-2); }
+  .fragment-merge-bar {
+    display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;
+    padding: 0.9rem 1.25rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .fragment-merge-bar .merge-info {
+    font-size: 0.82rem; color: var(--text-dim); flex: 1;
+  }
+
   .error-banner {
     display: none; padding: 1rem 1.25rem;
     background: rgba(255,126,179,0.08); border: 1px solid rgba(255,126,179,0.25);
@@ -377,6 +456,16 @@
     </button>
   </div>
 
+  <div class="page-range" id="pageRange">
+    <label>Rang de p&agrave;gines</label>
+    <div class="range-inputs">
+      <input type="number" id="pageStart" min="1" value="1" title="P&agrave;gina inicial">
+      <span class="range-sep">a</span>
+      <input type="number" id="pageEnd" min="1" value="1" title="P&agrave;gina final">
+    </div>
+    <span class="range-info" id="rangeInfo"></span>
+  </div>
+
   <div class="actions">
     <button class="btn-primary" id="startBtn" disabled>
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -417,6 +506,20 @@
     <div class="output-box">
       <div class="page-stream" id="pageStream"></div>
       <div class="stats-bar" id="statsBar"></div>
+    </div>
+  </div>
+
+  <div class="fragment-library" id="fragmentLibrary">
+    <h2>Fragments del llibre</h2>
+    <div class="fragment-list" id="fragmentList"></div>
+    <div class="fragment-merge-bar">
+      <span class="merge-info" id="fragmentMergeInfo">0 fragments</span>
+      <button class="btn-primary" id="mergeAllBtn" disabled style="padding:0.55em 1.4em;font-size:0.82rem;">
+        Merge &amp; descarregar llibre sencer
+      </button>
+      <button class="btn-secondary" id="clearFragmentsBtn" style="padding:0.55em 1.4em;font-size:0.82rem;">
+        Esborrar tots
+      </button>
     </div>
   </div>
 </div>
@@ -503,10 +606,15 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   const downloadTxtBtn = $('downloadTxtBtn'), downloadDocxBtn = $('downloadDocxBtn'), downloadPdfBtn = $('downloadPdfBtn');
   const dpiSelect = $('dpiSelect'), workerCountSel = $('workerCount');
   const optFast = $('optFast'), optGray = $('optGray');
+  const pageRangeDiv = $('pageRange'), pageStartInput = $('pageStart'), pageEndInput = $('pageEnd'), rangeInfo = $('rangeInfo');
+  const fragmentLibrary = $('fragmentLibrary'), fragmentList = $('fragmentList');
+  const mergeAllBtn = $('mergeAllBtn'), clearFragmentsBtn = $('clearFragmentsBtn'), fragmentMergeInfo = $('fragmentMergeInfo');
 
   let pdfFile = null, pageResults = [], cancelled = false, workers = [];
   let timeStart = 0, highestRenderedPage = 0, mergedTextCache = '';
+  let totalPdfPages = 0;
   const STORAGE_KEY = 'ocr-app-pages-v1';
+  const FRAGMENTS_KEY = 'ocr-app-fragments-v1';
 
   // Throttled persistence: avoid O(n²) JSON serialization on every page
   var _persistTimer = null;
@@ -585,12 +693,33 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     mergedTextCache = '';
     highestRenderedPage = 0;
     resetOutput();
+
+    // Detect page count and show range selector
+    try {
+      var arrayBuffer = await f.arrayBuffer();
+      var pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      totalPdfPages = pdf.numPages;
+      pageStartInput.min = 1;
+      pageStartInput.max = totalPdfPages;
+      pageStartInput.value = 1;
+      pageEndInput.min = 1;
+      pageEndInput.max = totalPdfPages;
+      pageEndInput.value = totalPdfPages;
+      rangeInfo.textContent = totalPdfPages + ' pàgines totals';
+      pageRangeDiv.classList.add('visible');
+      pdf.destroy();
+    } catch(e) {
+      totalPdfPages = 0;
+      pageRangeDiv.classList.remove('visible');
+    }
   }
 
   fileRemove.addEventListener('click', () => {
     pdfFile = null; fileInfo.classList.remove('visible');
     dropzone.style.display = ''; startBtn.disabled = true;
     fileInput.value = '';
+    pageRangeDiv.classList.remove('visible');
+    totalPdfPages = 0;
     resetOutput();
   });
 
@@ -881,6 +1010,17 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   async function startOCR() {
     if (!pdfFile) return;
+
+    // Validate page range
+    var rangeStart = parseInt(pageStartInput.value) || 1;
+    var rangeEnd = parseInt(pageEndInput.value) || totalPdfPages || 1;
+    if (rangeStart < 1) rangeStart = 1;
+    if (totalPdfPages && rangeEnd > totalPdfPages) rangeEnd = totalPdfPages;
+    if (rangeStart > rangeEnd) {
+      showError('El rang de pàgines no és vàlid: la pàgina inicial (' + rangeStart + ') no pot ser major que la final (' + rangeEnd + ').');
+      return;
+    }
+
     cancelled = false;
     pageResults = [];
     pageStream.innerHTML = '';
@@ -907,28 +1047,29 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     var useGray = optGray.checked;
 
     var textExtracted = 0, ocrProcessed = 0;
+    var numPages = rangeEnd - rangeStart + 1;
 
     try {
       var arrayBuffer = await pdfFile.arrayBuffer();
       var pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      var numPages = pdf.numPages;
 
-      // Initialize results array
+      // Initialize results array for the selected range
       for (var i = 0; i < numPages; i++) {
-        pageResults.push({ page: i + 1, text: '', confidence: 0, words: 0, method: '', done: false });
+        pageResults.push({ page: rangeStart + i, text: '', confidence: 0, words: 0, method: '', done: false });
       }
       outputArea.classList.add('visible');
       refreshStats();
 
-      // ── Phase 1: Try text extraction on all pages ──
+      // ── Phase 1: Try text extraction on selected pages ──
       setProgress(3, 'Analitzant estructura del PDF...');
-      progressPages.textContent = numPages + ' p\u00e0gines detectades';
+      progressPages.textContent = numPages + ' p\u00e0gines seleccionades (p.' + rangeStart + '-' + rangeEnd + ')';
 
-      var ocrNeeded = []; // page indices that need OCR
+      var ocrNeeded = []; // indices into pageResults that need OCR
 
       for (var i = 0; i < numPages; i++) {
         if (cancelled) break;
-        var page = await pdf.getPage(i + 1);
+        var pdfPageNum = rangeStart + i;
+        var page = await pdf.getPage(pdfPageNum);
         var text = await extractTextFromPage(page);
         page.cleanup();
 
@@ -947,7 +1088,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
         // Progress during Phase 1
         var phase1Pct = 1 + ((i + 1) / numPages) * 7;
-        setProgress(phase1Pct, 'Analitzant pàgina ' + (i + 1) + '/' + numPages + ' (' + textExtracted + ' amb text digital)');
+        setProgress(phase1Pct, 'Analitzant pàgina ' + pdfPageNum + ' (' + textExtracted + ' amb text digital)');
       }
       flushPersist();
       appendScannedPagesInOrder();
@@ -971,10 +1112,10 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         async function processNext(worker) {
           while (queue.length > 0 && !cancelled) {
             var pageIdx = queue.shift();
-            var pageNum = pageIdx + 1;
+            var pdfPageNum = rangeStart + pageIdx;
 
             try {
-              var page = await pdf.getPage(pageNum);
+              var page = await pdf.getPage(pdfPageNum);
               var viewport = page.getViewport({ scale });
               var canvas = document.createElement('canvas');
               canvas.width = viewport.width;
@@ -997,7 +1138,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
               // Free canvas memory
               canvas.width = 0; canvas.height = 0;
             } catch (pageErr) {
-              console.warn('OCR failed for page ' + pageNum + ':', pageErr.message);
+              console.warn('OCR failed for page ' + pdfPageNum + ':', pageErr.message);
               pageResults[pageIdx].text = '(Error OCR: ' + pageErr.message + ')';
               pageResults[pageIdx].confidence = 0;
               pageResults[pageIdx].words = 0;
@@ -1011,7 +1152,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             completed++;
 
             var pct = 10 + (completed / ocrNeeded.length) * 88;
-            setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
+            setProgress(pct, 'OCR p\u00e0gina ' + pdfPageNum + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
             progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
 
           }
@@ -1029,13 +1170,13 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var elapsed = ((performance.now() - timeStart) / 1000).toFixed(1);
         setProgress(100, 'Completat en ' + elapsed + 's!');
 
-        var infoMsg = '';
+        var infoMsg = 'Rang p.' + rangeStart + '-' + rangeEnd + ': ';
         if (textExtracted > 0 && ocrNeeded.length > 0) {
-          infoMsg = textExtracted + ' p\u00e0gines extretes directament (instant), ' + ocrProcessed + ' processades amb OCR. Temps: ' + elapsed + 's';
+          infoMsg += textExtracted + ' p\u00e0gines extretes directament, ' + ocrProcessed + ' OCR. Temps: ' + elapsed + 's';
         } else if (textExtracted > 0 && ocrNeeded.length === 0) {
-          infoMsg = 'Totes les ' + textExtracted + ' p\u00e0gines tenien text digital integrat. Extracci\u00f3 instant\u00e0nia sense OCR! (' + elapsed + 's)';
+          infoMsg += 'Totes les ' + textExtracted + ' p\u00e0gines tenien text digital. Extracci\u00f3 instant\u00e0nia! (' + elapsed + 's)';
         } else {
-          infoMsg = ocrProcessed + ' p\u00e0gines processades amb OCR en ' + elapsed + 's';
+          infoMsg += ocrProcessed + ' p\u00e0gines OCR en ' + elapsed + 's';
         }
 
         setTimeout(async () => {
@@ -1043,11 +1184,16 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
           showInfo(infoMsg);
           appendScannedPagesInOrder();
 
-          // Auto merge + download DOCX
+          // Auto merge + save fragment
           mergedTextCache = getMergedText();
           updateMergeState();
+
+          // Save fragment to localStorage
+          saveFragment(rangeStart, rangeEnd, mergedTextCache);
+
           try {
             await ensureExportLibs();
+            var fragName = getFragmentFileName(rangeStart, rangeEnd);
             var doc = new docx.Document({
               sections: [{ children: mergedTextCache.split('\n').map(line => new docx.Paragraph({ text: line })) }]
             });
@@ -1055,7 +1201,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
-            a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.docx';
+            a.download = fragName;
             a.click();
             URL.revokeObjectURL(url);
           } catch (ex) {
@@ -1114,13 +1260,19 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     showInfo('Merge completat. Ja pots descarregar TXT, DOCX o PDF.');
   });
 
+  function getCurrentRangeSuffix() {
+    var s = parseInt(pageStartInput.value) || 1;
+    var e = parseInt(pageEndInput.value) || totalPdfPages || 1;
+    return '_p' + s + '-' + e;
+  }
+
   downloadTxtBtn.addEventListener('click', () => {
     var allText = mergedTextCache || getMergedText();
     var blob = new Blob([allText], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.txt';
+    a.download = getBookName() + getCurrentRangeSuffix() + '.txt';
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -1135,7 +1287,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = (pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.docx';
+    a.download = getBookName() + getCurrentRangeSuffix() + '.docx';
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -1153,8 +1305,179 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       pdf.text(line, margin, y);
       y += 14;
     });
-    pdf.save((pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'ocr') + '_ocr.pdf');
+    pdf.save(getBookName() + getCurrentRangeSuffix() + '_ocr.pdf');
   });
+
+  // ═══════════════════════════════════════════════
+  // FRAGMENT MANAGEMENT
+  // Save/load/merge DOCX fragments per page range
+  // ═══════════════════════════════════════════════
+
+  function getBookName() {
+    return pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'llibre';
+  }
+
+  function getFragmentFileName(start, end) {
+    return getBookName() + '_p' + start + '-' + end + '.docx';
+  }
+
+  function loadFragments() {
+    try {
+      var data = JSON.parse(localStorage.getItem(FRAGMENTS_KEY) || '[]');
+      return Array.isArray(data) ? data : [];
+    } catch(_) { return []; }
+  }
+
+  function saveFragments(fragments) {
+    try {
+      localStorage.setItem(FRAGMENTS_KEY, JSON.stringify(fragments));
+    } catch(_) {}
+  }
+
+  function saveFragment(start, end, text) {
+    var fragments = loadFragments();
+    var bookName = getBookName();
+    // Remove existing fragment with same range and book
+    fragments = fragments.filter(f => !(f.book === bookName && f.start === start && f.end === end));
+    fragments.push({
+      book: bookName,
+      start: start,
+      end: end,
+      text: text,
+      words: text.split(/\s+/).filter(w => w.length > 0).length,
+      createdAt: new Date().toISOString()
+    });
+    // Sort by start page
+    fragments.sort((a, b) => a.start - b.start);
+    saveFragments(fragments);
+    renderFragmentLibrary();
+  }
+
+  function renderFragmentLibrary() {
+    var fragments = loadFragments();
+    fragmentList.innerHTML = '';
+
+    if (fragments.length === 0) {
+      fragmentLibrary.classList.remove('visible');
+      return;
+    }
+
+    fragmentLibrary.classList.add('visible');
+    var totalWords = 0;
+
+    fragments.forEach(function(frag, idx) {
+      totalWords += frag.words || 0;
+      var item = document.createElement('div');
+      item.className = 'fragment-item';
+      item.innerHTML =
+        '<div class="frag-icon">p.' + frag.start + '-' + frag.end + '</div>' +
+        '<div class="frag-details">' +
+          '<div class="frag-name">' + escapeHtml(frag.book) + '_p' + frag.start + '-' + frag.end + '.docx</div>' +
+          '<div class="frag-meta">' + (frag.words || 0).toLocaleString() + ' paraules · ' +
+            (frag.end - frag.start + 1) + ' pàg · ' + formatDate(frag.createdAt) + '</div>' +
+        '</div>' +
+        '<div class="frag-actions">' +
+          '<button class="frag-btn" data-action="download" data-idx="' + idx + '" title="Descarregar DOCX">&#x21E9; DOCX</button>' +
+          '<button class="frag-btn delete" data-action="delete" data-idx="' + idx + '" title="Eliminar">&times;</button>' +
+        '</div>';
+      fragmentList.appendChild(item);
+    });
+
+    fragmentMergeInfo.textContent = fragments.length + ' fragment' + (fragments.length > 1 ? 's' : '') +
+      ' · ' + totalWords.toLocaleString() + ' paraules totals';
+    mergeAllBtn.disabled = fragments.length < 1;
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function formatDate(iso) {
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString('ca') + ' ' + d.toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' });
+    } catch(_) { return ''; }
+  }
+
+  // Fragment actions (event delegation)
+  fragmentList.addEventListener('click', async function(e) {
+    var btn = e.target.closest('.frag-btn');
+    if (!btn) return;
+    var idx = parseInt(btn.dataset.idx);
+    var fragments = loadFragments();
+    if (idx < 0 || idx >= fragments.length) return;
+
+    if (btn.dataset.action === 'download') {
+      var frag = fragments[idx];
+      await ensureExportLibs();
+      var doc = new docx.Document({
+        sections: [{ children: frag.text.split('\n').map(line => new docx.Paragraph({ text: line })) }]
+      });
+      var blob = await docx.Packer.toBlob(doc);
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = frag.book + '_p' + frag.start + '-' + frag.end + '.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (btn.dataset.action === 'delete') {
+      fragments.splice(idx, 1);
+      saveFragments(fragments);
+      renderFragmentLibrary();
+    }
+  });
+
+  // Merge all fragments into one DOCX
+  mergeAllBtn.addEventListener('click', async function() {
+    var fragments = loadFragments();
+    if (fragments.length === 0) return;
+
+    await ensureExportLibs();
+
+    // Sort by start page and merge
+    fragments.sort((a, b) => a.start - b.start);
+    var allText = fragments.map(f => f.text).join('\n\n\n');
+    var bookName = fragments[0].book || 'llibre';
+    var firstPage = fragments[0].start;
+    var lastPage = fragments[fragments.length - 1].end;
+
+    var doc = new docx.Document({
+      sections: [{ children: allText.split('\n').map(line => new docx.Paragraph({ text: line })) }]
+    });
+    var blob = await docx.Packer.toBlob(doc);
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = bookName + '_complet_p' + firstPage + '-' + lastPage + '.docx';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Clear all fragments
+  clearFragmentsBtn.addEventListener('click', function() {
+    if (confirm('Esborrar tots els fragments guardats?')) {
+      saveFragments([]);
+      renderFragmentLibrary();
+    }
+  });
+
+  // Update range info when inputs change
+  pageStartInput.addEventListener('change', validateRange);
+  pageEndInput.addEventListener('change', validateRange);
+  function validateRange() {
+    var s = parseInt(pageStartInput.value) || 1;
+    var e = parseInt(pageEndInput.value) || totalPdfPages;
+    if (s < 1) { s = 1; pageStartInput.value = 1; }
+    if (totalPdfPages && e > totalPdfPages) { e = totalPdfPages; pageEndInput.value = totalPdfPages; }
+    if (s > e) { pageStartInput.value = e; s = e; }
+    var count = e - s + 1;
+    rangeInfo.textContent = count + ' pàgines seleccionades de ' + totalPdfPages;
+  }
+
+  // Load fragment library on startup
+  renderFragmentLibrary();
 
 })();
 </script>
