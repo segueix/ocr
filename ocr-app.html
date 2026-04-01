@@ -508,6 +508,50 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   let timeStart = 0, highestRenderedPage = 0, mergedTextCache = '';
   const STORAGE_KEY = 'ocr-app-pages-v1';
 
+  // Throttled persistence: avoid O(n²) JSON serialization on every page
+  var _persistTimer = null;
+  var _persistDirty = false;
+  function persistPageStateThrottled() {
+    _persistDirty = true;
+    if (!_persistTimer) {
+      _persistTimer = setTimeout(function() {
+        _persistTimer = null;
+        if (_persistDirty) { persistPageState(); _persistDirty = false; }
+      }, 3000);
+    }
+  }
+  function flushPersist() {
+    if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+    if (_persistDirty) { persistPageState(); _persistDirty = false; }
+  }
+
+  // Throttled DOM updates: batch rendering
+  var _renderTimer = null;
+  function scheduleRender() {
+    if (!_renderTimer) {
+      _renderTimer = requestAnimationFrame(function() {
+        _renderTimer = null;
+        appendScannedPagesInOrder();
+      });
+    }
+  }
+
+  // Timeout wrapper for OCR recognition
+  function recognizeWithTimeout(worker, canvas, timeoutMs) {
+    return new Promise(function(resolve, reject) {
+      var timer = setTimeout(function() {
+        reject(new Error('OCR timeout after ' + (timeoutMs / 1000) + 's'));
+      }, timeoutMs);
+      worker.recognize(canvas).then(function(result) {
+        clearTimeout(timer);
+        resolve(result);
+      }).catch(function(err) {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
   // ── Drag/drop ──
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
@@ -746,7 +790,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       card.className = 'page-entry';
       var heading = '<h3>Pàgina ' + row.page + ' [' + (row.method === 'text' ? 'text directe' : 'OCR') + ']</h3>';
       card.innerHTML = heading;
-      var normalized = normalizeText(row.text);
+      var normalized = row.text;
       if (!normalized) {
         var p = document.createElement('p');
         p.textContent = '(Sense text detectat)';
@@ -886,6 +930,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         if (cancelled) break;
         var page = await pdf.getPage(i + 1);
         var text = await extractTextFromPage(page);
+        page.cleanup();
 
         if (hasRealText(text)) {
           pageResults[i].text = text;
@@ -893,13 +938,19 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
           pageResults[i].words = text.split(/\s+/).filter(w => w.length > 0).length;
           pageResults[i].method = 'text';
           pageResults[i].done = true;
-          persistPageState();
-          appendScannedPagesInOrder();
+          persistPageStateThrottled();
+          scheduleRender();
           textExtracted++;
         } else {
           ocrNeeded.push(i);
         }
+
+        // Progress during Phase 1
+        var phase1Pct = 1 + ((i + 1) / numPages) * 7;
+        setProgress(phase1Pct, 'Analitzant pàgina ' + (i + 1) + '/' + numPages + ' (' + textExtracted + ' amb text digital)');
       }
+      flushPersist();
+      appendScannedPagesInOrder();
 
       setProgress(8, textExtracted + ' p\u00e0gines amb text digital, ' + ocrNeeded.length + ' necessiten OCR...');
 
@@ -915,31 +966,47 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         var completed = 0;
         var queue = [...ocrNeeded];
 
+        var OCR_TIMEOUT = 120000; // 2 minutes per page max
+
         async function processNext(worker) {
           while (queue.length > 0 && !cancelled) {
             var pageIdx = queue.shift();
             var pageNum = pageIdx + 1;
 
-            var page = await pdf.getPage(pageNum);
-            var viewport = page.getViewport({ scale });
-            var canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            var ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            try {
+              var page = await pdf.getPage(pageNum);
+              var viewport = page.getViewport({ scale });
+              var canvas = document.createElement('canvas');
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              var ctx = canvas.getContext('2d');
+              await page.render({ canvasContext: ctx, viewport }).promise;
+              page.cleanup();
 
-            // Grayscale optimization
-            if (useGray) toGrayscale(canvas);
+              // Grayscale optimization
+              if (useGray) toGrayscale(canvas);
 
-            var { data } = await worker.recognize(canvas);
+              var { data } = await recognizeWithTimeout(worker, canvas, OCR_TIMEOUT);
 
-            pageResults[pageIdx].text = normalizeText(data.text);
-            pageResults[pageIdx].confidence = data.confidence;
-            pageResults[pageIdx].words = data.words ? data.words.length : 0;
-            pageResults[pageIdx].method = 'ocr';
-            pageResults[pageIdx].done = true;
-            persistPageState();
-            appendScannedPagesInOrder();
+              pageResults[pageIdx].text = normalizeText(data.text);
+              pageResults[pageIdx].confidence = data.confidence;
+              pageResults[pageIdx].words = data.words ? data.words.length : 0;
+              pageResults[pageIdx].method = 'ocr';
+              pageResults[pageIdx].done = true;
+
+              // Free canvas memory
+              canvas.width = 0; canvas.height = 0;
+            } catch (pageErr) {
+              console.warn('OCR failed for page ' + pageNum + ':', pageErr.message);
+              pageResults[pageIdx].text = '(Error OCR: ' + pageErr.message + ')';
+              pageResults[pageIdx].confidence = 0;
+              pageResults[pageIdx].words = 0;
+              pageResults[pageIdx].method = 'ocr';
+              pageResults[pageIdx].done = true;
+            }
+
+            persistPageStateThrottled();
+            scheduleRender();
             ocrProcessed++;
             completed++;
 
@@ -947,13 +1014,13 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
             setProgress(pct, 'OCR p\u00e0gina ' + pageNum + '/' + numPages + ' (' + completed + '/' + ocrNeeded.length + ' OCR)');
             progressPages.textContent = completed + ' / ' + ocrNeeded.length + ' p\u00e0gines OCR completades';
 
-            // Free memory
-            canvas.width = 0; canvas.height = 0;
           }
         }
 
         // Launch parallel processing
         await Promise.all(workers.map(w => processNext(w)));
+        flushPersist();
+        appendScannedPagesInOrder();
         await terminatePool(workers);
         workers = [];
       }
@@ -1018,6 +1085,7 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
 
   cancelBtn.addEventListener('click', async () => {
     cancelled = true;
+    flushPersist();
     releaseWakeLock();
     if (workers.length) { await terminatePool(workers); workers = []; }
     progressArea.classList.remove('visible');
