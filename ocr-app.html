@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#6c8aff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OCR Lector">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="ocr_icon.png">
+<link rel="apple-touch-icon" href="ocr_icon.png">
 <title>OCR Documents — Lector &Ograve;ptic</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -536,6 +543,11 @@
 </div>
 
 <script>
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function() {});
+}
+
 (async function() {
   const TESS_JS    = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
   const WORKER_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/worker.min.js';
@@ -1002,6 +1014,8 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
   // Prevent browser from throttling/suspending during OCR
   // ═══════════════════════════════════════════════
   var wakeLockAbort = null;
+  var screenWakeLock = null;
+  var keepAliveInterval = null;
 
   function acquireWakeLock() {
     // Method 1: Web Locks API — keeps the tab "active" in the browser's eyes
@@ -1011,6 +1025,33 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
         return new Promise(function() {}); // Hold the lock indefinitely until aborted
       }).catch(function() {});
     }
+
+    // Method 2: Screen Wake Lock API — prevents device from sleeping
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(function(lock) {
+        screenWakeLock = lock;
+        lock.addEventListener('release', function() { screenWakeLock = null; });
+      }).catch(function() {});
+    }
+
+    // Method 3: Periodic self-ping to prevent timer throttling in background tabs
+    if (!keepAliveInterval) {
+      keepAliveInterval = setInterval(function() {}, 5000);
+    }
+
+    // Re-acquire screen wake lock when tab becomes visible again
+    document.addEventListener('visibilitychange', reacquireOnVisible);
+  }
+
+  function reacquireOnVisible() {
+    if (document.visibilityState === 'visible' && !screenWakeLock && wakeLockAbort) {
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(function(lock) {
+          screenWakeLock = lock;
+          lock.addEventListener('release', function() { screenWakeLock = null; });
+        }).catch(function() {});
+      }
+    }
   }
 
   function releaseWakeLock() {
@@ -1018,6 +1059,15 @@ else{throw new Error('Load failed: '+arguments[i]+' ('+x.status+')')}
       wakeLockAbort.abort();
       wakeLockAbort = null;
     }
+    if (screenWakeLock) {
+      screenWakeLock.release();
+      screenWakeLock = null;
+    }
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+    }
+    document.removeEventListener('visibilitychange', reacquireOnVisible);
   }
 
   // ── Main OCR ──
